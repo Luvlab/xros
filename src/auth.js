@@ -52,13 +52,23 @@ export class Auth {
   }
 
   async _loadProfile() {
-    const { data, error } = await supabase
-      .from('profiles')
+    const { data } = await supabase
+      .from('xros_profiles')
       .select('id, email, display_name, role')
       .eq('id', this.user.id)
+      .maybeSingle()
+    if (data) {
+      this.profile = data
+      return
+    }
+    // First sign-in: create our own profile row (RLS permits inserting a
+    // 'consumer' row for yourself). No auth.users trigger — luvlab owns that.
+    const { data: created } = await supabase
+      .from('xros_profiles')
+      .insert({ id: this.user.id, email: this.user.email, role: 'consumer' })
+      .select('id, email, display_name, role')
       .single()
-    // Row is created by a DB trigger on signup; tolerate a brief race.
-    this.profile = error ? null : data
+    this.profile = created || null
   }
 
   /** Magic-link email sign-in. */

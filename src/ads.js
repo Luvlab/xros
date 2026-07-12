@@ -36,8 +36,10 @@ export class AdLayer {
       try {
         // Serve one active creative. RLS exposes creatives of active campaigns.
         const { data } = await supabase
-          .from('ad_creatives')
-          .select('id, format, title, body, media_url, click_url, campaign!inner(status)')
+          .from('xros_ad_creatives')
+          .select(
+            'id, format, title, body, media_url, click_url, campaign:xros_campaigns!inner(status)'
+          )
           .eq('campaign.status', 'active')
           .eq('format', 'billboard')
           .limit(10)
@@ -126,7 +128,7 @@ export class AdLayer {
     if (!isBackendConfigured || !this.creative || this.creative.id === 'demo')
       return
     try {
-      await supabase.from('ad_events').insert({
+      await supabase.from('xros_ad_events').insert({
         creative: this.creative.id,
         event_type: type,
         user_id: userId,

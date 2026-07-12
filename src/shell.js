@@ -32,7 +32,7 @@ export class Shell {
     if (isBackendConfigured) {
       try {
         const { data } = await supabase
-          .from('apps')
+          .from('xros_apps')
           .select('id, title, category, url, thumbnail_url')
           .eq('status', 'published')
           .limit(9)

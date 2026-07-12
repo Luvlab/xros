@@ -110,7 +110,7 @@ async function createCampaign() {
   const name = document.getElementById('c-name').value.trim()
   const kr = Number(document.getElementById('c-budget').value || 0)
   if (!name) return (err.textContent = 'Name is required.')
-  const { error } = await supabase.from('campaigns').insert({
+  const { error } = await supabase.from('xros_campaigns').insert({
     advertiser: auth.profile.id,
     name,
     budget_cents: Math.round(kr * 100),
@@ -124,7 +124,7 @@ async function createCampaign() {
 async function loadCampaigns() {
   const list = document.getElementById('list')
   const { data: campaigns, error } = await supabase
-    .from('campaigns')
+    .from('xros_campaigns')
     .select('id, name, status, budget_cents, spend_cents, created_at')
     .order('created_at', { ascending: false })
   if (error) {
@@ -139,7 +139,7 @@ async function loadCampaigns() {
   // Fetch creatives for all campaigns in one query.
   const ids = campaigns.map((c) => c.id)
   const { data: creatives } = await supabase
-    .from('ad_creatives')
+    .from('xros_ad_creatives')
     .select('id, campaign, format, title, click_url')
     .in('campaign', ids)
   const byCampaign = groupBy(creatives || [], 'campaign')
@@ -189,7 +189,7 @@ function campaignCard(c, creatives) {
   el.querySelector('.toggle').addEventListener('click', async () => {
     const next = c.status === 'active' ? 'paused' : 'active'
     const { error } = await supabase
-      .from('campaigns')
+      .from('xros_campaigns')
       .update({ status: next })
       .eq('id', c.id)
     if (!error) loadCampaigns()
@@ -203,7 +203,7 @@ function campaignCard(c, creatives) {
     const cerr = el.querySelector('.cerr')
     cerr.textContent = ''
     if (!title) return (cerr.textContent = 'Title required.')
-    const { error } = await supabase.from('ad_creatives').insert({
+    const { error } = await supabase.from('xros_ad_creatives').insert({
       campaign: c.id,
       format: 'billboard',
       title,
