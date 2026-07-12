@@ -3,7 +3,7 @@ import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js'
 import { createWorld } from './scene.js'
 import { LookControls } from './controls.js'
 import { ResultsLayer } from './cards.js'
-import { search } from './search.js'
+import { search, fetchArticle } from './search.js'
 import {
   Settings,
   PRESETS,
@@ -462,12 +462,18 @@ function pick(ndc) {
     ...ads.intersectables(),
     ...shell.intersectables(),
   ]
-  if (results.detail) targets.unshift(results.detail)
   const hits = raycaster.intersectObjects(targets, false)
   return hits.length ? hits[0].object : null
 }
 
+let readerToken = 0
 function select(mesh) {
+  // Reader navigation controls take priority while the reader is open.
+  const ctrl = mesh.userData.readerCtrl
+  if (ctrl === 'close') return results.hideReader()
+  if (ctrl === 'prev') return results.readerPage(-1)
+  if (ctrl === 'next') return results.readerPage(1)
+
   if (mesh.userData.ad) {
     ads.activate(auth.user?.id || null)
     return
@@ -476,13 +482,27 @@ function select(mesh) {
     shell.activate(mesh)
     return
   }
-  if (mesh.userData.detail) {
-    // second activation on the detail panel opens the source
-    window.open(mesh.userData.result.url, '_blank', 'noopener')
-    return
-  }
   if (mesh.userData.result) {
-    results.showDetail(mesh.userData.result)
+    openReader(mesh.userData.result)
+  }
+}
+
+// Open the article INSIDE XROS — fetch content, render it as a 3D reader panel.
+// No external tab.
+async function openReader(data) {
+  const token = ++readerToken
+  results.showReader(null, camera) // loading placeholder, placed where you look
+  try {
+    const article = await fetchArticle(data.id)
+    if (token !== readerToken) return
+    results.setReaderArticle(article, camera)
+  } catch (err) {
+    console.error(err)
+    if (token !== readerToken) return
+    results.setReaderArticle(
+      { title: data.title, text: data.snippet || 'Could not load this article.', url: data.url },
+      camera
+    )
   }
 }
 

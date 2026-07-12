@@ -14,7 +14,12 @@ export class ResultsLayer {
     this.group = new THREE.Group()
     this.scene.add(this.group)
     this.cards = [] // { mesh, data, basePos, baseQuat }
-    this.detail = null
+    this.reader = null // THREE.Group (panel + controls) or null
+    this._readerPanel = null
+    this._readerCtrls = []
+    this._article = null
+    this._pages = []
+    this._page = 0
     this.answer = null
     this._texLoader = new THREE.TextureLoader()
     this._texLoader.setCrossOrigin('anonymous')
@@ -40,7 +45,7 @@ export class ResultsLayer {
       this.group.remove(c.mesh)
     }
     this.cards = []
-    this.hideDetail()
+    this.hideReader()
     this.hideAnswer()
   }
 
@@ -178,6 +183,9 @@ export class ResultsLayer {
   }
 
   intersectables() {
+    // While the reader is open, only its controls are interactive (the result
+    // cards sit behind it); otherwise the cards themselves.
+    if (this.reader) return [...this._readerCtrls]
     return this.cards.map((c) => c.mesh)
   }
 
@@ -189,52 +197,192 @@ export class ResultsLayer {
     }
   }
 
-  showDetail(data) {
-    this.hideDetail()
+  /**
+   * In-XROS reader — opens the full article as a paginated 3D panel in front of
+   * the viewer, so results are read *inside* the browser (works in cardboard),
+   * never handed off to an external tab. Pass camera to place it where you look.
+   *
+   * @param {{title:string,text:string,thumb?:string,url?:string}|null} article
+   *        null => a "Loading…" placeholder while the fetch is in flight.
+   */
+  showReader(article, camera) {
+    this.hideReader()
+    this._article = article
+    this._page = 0
+    this._pages = article ? this._paginate(article.text) : [['Loading…']]
+
+    // Panel + controls live in a group placed in front of the camera.
+    const group = new THREE.Group()
+    if (camera) {
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+      group.position.copy(camera.position).add(dir.multiplyScalar(3.4))
+      group.quaternion.copy(camera.quaternion)
+    } else {
+      group.position.set(0, 0, -3.4)
+    }
+    this.reader = group
+    this.scene.add(group)
+
+    // Panel mesh (texture rebuilt per page)
+    const geo = new THREE.PlaneGeometry(3.4, 2.15)
+    const mat = new THREE.MeshBasicMaterial({ transparent: true })
+    const panel = new THREE.Mesh(geo, mat)
+    panel.userData.readerPanel = true
+    group.add(panel)
+    this._readerPanel = panel
+
+    // Controls: prev / next / close (each its own mesh for gaze + click)
+    this._readerCtrls = [
+      this._makeCtrl('‹', 'prev', -0.7),
+      this._makeCtrl('✕', 'close', 0),
+      this._makeCtrl('›', 'next', 0.7),
+    ]
+    for (const c of this._readerCtrls) {
+      c.position.y = -1.28
+      group.add(c)
+    }
+
+    this._renderReaderPage()
+    return group
+  }
+
+  _makeCtrl(label, action, x) {
+    const s = 128
     const canvas = document.createElement('canvas')
-    canvas.width = 1024
-    canvas.height = 640
+    canvas.width = s
+    canvas.height = s
     const ctx = canvas.getContext('2d')
-    roundRect(ctx, 8, 8, 1008, 624, 28)
-    ctx.fillStyle = 'rgba(10,12,24,0.98)'
+    const accent = cssVar('--accent', '#6af7ff')
+    ctx.beginPath()
+    ctx.arc(s / 2, s / 2, s / 2 - 6, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(12,14,26,0.96)'
     ctx.fill()
-    ctx.lineWidth = 3
-    ctx.strokeStyle = 'rgba(106,247,255,0.6)'
+    ctx.lineWidth = 4
+    ctx.strokeStyle = accent
     ctx.stroke()
-
-    ctx.fillStyle = '#6af7ff'
-    ctx.font = '700 40px ui-monospace, Menlo, monospace'
-    wrapText(ctx, data.title, 48, 60, 928, 46, 2)
-
-    ctx.fillStyle = '#cdd4f5'
-    ctx.font = '400 26px ui-monospace, Menlo, monospace'
-    wrapText(ctx, data.snippet || 'No summary available.', 48, 190, 928, 36, 10)
-
-    ctx.fillStyle = '#7c86b8'
-    ctx.font = '400 20px ui-monospace, Menlo, monospace'
-    ctx.fillText('▸ look away or tap to close · opens ' + shortUrl(data.url), 48, 600)
-
+    ctx.fillStyle = accent
+    ctx.font = '700 64px ui-monospace, Menlo, monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(label, s / 2, s / 2 + 2)
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
     const tex = new THREE.CanvasTexture(canvas)
     tex.colorSpace = THREE.SRGBColorSpace
-    const geo = new THREE.PlaneGeometry(3.2, 2.0)
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true })
-    const mesh = new THREE.Mesh(geo, mat)
-    mesh.position.set(0, 0, -3)
-    mesh.userData.detail = true
-    mesh.userData.result = data
-    this.detail = mesh
-    this.scene.add(mesh)
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.34, 0.34),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+    )
+    mesh.userData.readerCtrl = action
     return mesh
   }
 
-  hideDetail() {
-    if (this.detail) {
-      this.detail.geometry.dispose()
-      this.detail.material.map?.dispose()
-      this.detail.material.dispose()
-      this.scene.remove(this.detail)
-      this.detail = null
+  _renderReaderPage() {
+    const a = this._article
+    const W = 1024
+    const H = 648
+    const canvas = document.createElement('canvas')
+    canvas.width = W
+    canvas.height = H
+    const ctx = canvas.getContext('2d')
+    const accent = cssVar('--accent', '#6af7ff')
+
+    roundRect(ctx, 8, 8, W - 16, H - 16, 28)
+    ctx.fillStyle = 'rgba(10,12,24,0.98)'
+    ctx.fill()
+    ctx.lineWidth = 3
+    ctx.strokeStyle = hexA(accent, 0.6)
+    ctx.stroke()
+
+    // Header: title + page indicator
+    ctx.fillStyle = accent
+    ctx.font = '700 34px ui-monospace, Menlo, monospace'
+    wrapText(ctx, a ? a.title : 'Loading…', 44, 56, W - 200, 40, 1)
+    ctx.fillStyle = '#7c86b8'
+    ctx.font = '400 22px ui-monospace, Menlo, monospace'
+    ctx.textAlign = 'right'
+    ctx.fillText(`${this._page + 1}/${this._pages.length}`, W - 44, 52)
+    ctx.textAlign = 'left'
+    ctx.fillText(a?.url ? shortUrl(a.url) : '', 44, 92)
+
+    // Body: current page lines
+    ctx.fillStyle = '#dbe1ff'
+    ctx.font = '400 25px ui-monospace, Menlo, monospace'
+    let y = 150
+    for (const line of this._pages[this._page] || []) {
+      ctx.fillText(line, 44, y)
+      y += 34
     }
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.anisotropy = 4
+    this._readerPanel.material.map?.dispose()
+    this._readerPanel.material.map = tex
+    this._readerPanel.material.needsUpdate = true
+  }
+
+  /** Split article text into pages of lines that fit the panel. */
+  _paginate(text) {
+    const W = 1024
+    const maxW = W - 88
+    const linesPerPage = 13
+    // Measure with a scratch canvas at the body font.
+    const ctx = document.createElement('canvas').getContext('2d')
+    ctx.font = '400 25px ui-monospace, Menlo, monospace'
+    const lines = []
+    for (const para of String(text || '').split('\n')) {
+      if (!para.trim()) {
+        lines.push('')
+        continue
+      }
+      let line = ''
+      for (const word of para.split(/\s+/)) {
+        const test = line ? line + ' ' + word : word
+        if (ctx.measureText(test).width > maxW && line) {
+          lines.push(line)
+          line = word
+        } else line = test
+      }
+      if (line) lines.push(line)
+      lines.push('') // paragraph gap
+    }
+    const pages = []
+    for (let i = 0; i < lines.length; i += linesPerPage) {
+      pages.push(lines.slice(i, i + linesPerPage))
+    }
+    return pages.length ? pages : [['(no content)']]
+  }
+
+  readerPage(delta) {
+    if (!this.reader) return
+    const next = this._page + delta
+    if (next < 0 || next >= this._pages.length) return
+    this._page = next
+    this._renderReaderPage()
+  }
+
+  /** Called once the async article arrives, replacing the loading panel. */
+  setReaderArticle(article, camera) {
+    // Only swap if a reader is still open.
+    if (this.reader) this.showReader(article, camera)
+  }
+
+  hideReader() {
+    if (!this.reader) return
+    this.reader.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose()
+        o.material.map?.dispose()
+        o.material.dispose()
+      }
+    })
+    this.scene.remove(this.reader)
+    this.reader = null
+    this._readerCtrls = []
+    this._readerPanel = null
+    this._article = null
+    this._pages = []
   }
 
   /**
@@ -301,13 +449,13 @@ export class ResultsLayer {
   /** Gentle idle motion so the field feels alive. */
   update(dt) {
     this._t += dt
-    for (let i = 0; i < this.cards.length; i++) {
-      const c = this.cards[i]
-      const bob = Math.sin(this._t * 0.6 + i * 0.9) * 0.03
-      c.mesh.position.y = c.basePos.y + bob
-    }
-    if (this.detail) {
-      this.detail.position.y = Math.sin(this._t * 0.8) * 0.02
+    // Cards hold still while reading, so the field behind the reader is calm.
+    if (!this.reader) {
+      for (let i = 0; i < this.cards.length; i++) {
+        const c = this.cards[i]
+        const bob = Math.sin(this._t * 0.6 + i * 0.9) * 0.03
+        c.mesh.position.y = c.basePos.y + bob
+      }
     }
     if (this.answer) {
       this.answer.position.y = 1.75 + Math.sin(this._t * 0.7) * 0.03

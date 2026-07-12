@@ -61,3 +61,36 @@ function stripHtml(s) {
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+/**
+ * Fetch the full article content for the in-XROS reader — so results open
+ * *inside* the browser instead of a new tab.
+ * @param {string} pageid
+ * @returns {Promise<{title:string,text:string,thumb:string|null,url:string}>}
+ */
+export async function fetchArticle(pageid) {
+  const params = new URLSearchParams({
+    action: 'query',
+    format: 'json',
+    origin: '*',
+    pageids: String(pageid),
+    prop: 'extracts|pageimages|info',
+    explaintext: '1',
+    exsectionformat: 'plain',
+    piprop: 'thumbnail',
+    pithumbsize: '640',
+    inprop: 'url',
+  })
+  const res = await fetch(`${WIKI}?${params.toString()}`)
+  if (!res.ok) throw new Error(`Article fetch failed: ${res.status}`)
+  const data = await res.json()
+  const p = data?.query?.pages?.[pageid]
+  if (!p) throw new Error('Article not found')
+  return {
+    title: p.title,
+    // Collapse runs of blank lines to single paragraph breaks.
+    text: (p.extract || '').replace(/\n{2,}/g, '\n').trim(),
+    thumb: p.thumbnail?.source || null,
+    url: p.fullurl || `https://en.wikipedia.org/?curid=${pageid}`,
+  }
+}
