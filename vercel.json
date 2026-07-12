@@ -2,11 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "cleanUrls": true,
   "rewrites": [
+    { "source": "/xros/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/xros/advertiser", "destination": "/advertiser.html" },
     { "source": "/xros", "destination": "/index.html" },
     { "source": "/xros/", "destination": "/index.html" },
-    { "source": "/xros/advertiser", "destination": "/advertiser.html" },
-    { "source": "/xros/(.*)", "destination": "/$1" }
+    { "source": "/xros/(.*)", "destination": "/index.html" }
   ]
 }
