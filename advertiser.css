@@ -1,0 +1,136 @@
+/* Advertiser portal — flat 2D dashboard (reuses theme vars from style.css) */
+body.portal {
+  overflow: auto;
+  touch-action: auto;
+  background: var(--bg);
+  color: var(--fg);
+}
+.portal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid rgba(122, 134, 184, 0.2);
+  position: sticky;
+  top: 0;
+  background: rgba(5, 6, 10, 0.85);
+  backdrop-filter: blur(12px);
+  z-index: 5;
+}
+.portal-home {
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 13px;
+}
+.portal-home:hover {
+  color: var(--accent);
+}
+#portal-root {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px 22px 80px;
+}
+.portal-note {
+  color: var(--dim);
+  font-size: 14px;
+  padding: 40px 0;
+  text-align: center;
+}
+.panel {
+  border: 1px solid rgba(122, 134, 184, 0.22);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.row > * {
+  flex: 1 1 140px;
+}
+label.f {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 4px;
+}
+input.i,
+select.i,
+textarea.i {
+  width: 100%;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--fg);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(122, 134, 184, 0.3);
+  border-radius: 8px;
+  padding: 9px 10px;
+  outline: none;
+}
+button.btn {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #05060a;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+button.btn.ghost {
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid rgba(122, 134, 184, 0.35);
+}
+.campaign {
+  border: 1px solid rgba(122, 134, 184, 0.2);
+  border-radius: 12px;
+  padding: 14px;
+  margin-top: 12px;
+}
+.campaign-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.status {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(122, 134, 184, 0.4);
+  color: var(--dim);
+}
+.status.active {
+  color: #39ff9e;
+  border-color: #39ff9e;
+}
+.creative {
+  font-size: 13px;
+  color: var(--dim);
+  padding: 8px 0;
+  border-top: 1px solid rgba(122, 134, 184, 0.15);
+}
+.muted {
+  color: var(--dim);
+  font-size: 12px;
+}
+.err {
+  color: #ff8a8a;
+  font-size: 12px;
+}

@@ -1,0 +1,12 @@
+node_modules
+dist
+.DS_Store
+*.log
+
+# Secrets / local env — never commit
+.env
+.env.local
+.env.*.local
+
+# Vercel
+.vercel

@@ -1,0 +1,20 @@
+{
+  "name": "xr-search-engine",
+  "version": "0.1.0",
+  "description": "An open-source, AI-powered immersive (VR/AR/360) browser + search engine + XR ad platform.",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "author": "Luvlab (Gordon Cyrus) <g@luvlab.io>",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.2",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#05060a" />
+    <title>XR Search — spatial search engine</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- WebGL canvas is injected here by main.js -->
+    <div id="scene"></div>
+
+    <!-- 2D overlay: search + mode controls. Hidden while in stereo (cardboard) mode. -->
+    <div id="ui">
+      <header id="topbar">
+        <div class="brand">
+          <span class="logo">◎</span> XR<span class="brand-dim">SEARCH</span>
+        </div>
+        <form id="search-form" autocomplete="off">
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Search the space…"
+            aria-label="Search"
+          />
+          <button id="search-btn" type="submit" aria-label="Search">➜</button>
+        </form>
+        <div id="modes">
+          <button id="fov-btn" class="mode-btn" title="Field of view — tap to cycle 90 / 120 / 180 / 360">◐ 120°</button>
+          <button data-mode="tilt" class="mode-btn" title="Tilt / magic window">TILT</button>
+          <button data-mode="cardboard" class="mode-btn" title="VR cardboard">VR</button>
+          <button id="settings-btn" class="mode-btn" title="Settings">⚙</button>
+        </div>
+      </header>
+
+      <!-- Settings panel -->
+      <aside id="settings" class="hidden" aria-label="Settings">
+        <div class="settings-head">
+          <strong>Settings</strong>
+          <button id="settings-close" aria-label="Close">✕</button>
+        </div>
+        <nav class="settings-tabs">
+          <button class="stab active" data-tab="appearance">Appearance</button>
+          <button class="stab" data-tab="view">View</button>
+          <button class="stab" data-tab="ai">AI</button>
+          <button class="stab" data-tab="account">Account</button>
+        </nav>
+
+        <section class="settings-body" data-panel="appearance">
+          <label class="field-label">Presets</label>
+          <div id="preset-row" class="preset-row"></div>
+          <div id="theme-fields"></div>
+          <label class="field-label" for="custom-css">Custom CSS (advanced)</label>
+          <textarea
+            id="custom-css"
+            class="css-area"
+            spellcheck="false"
+            placeholder="/* injected live — e.g. */&#10;#topbar { backdrop-filter: blur(20px); }"
+          ></textarea>
+          <button id="theme-reset" class="ghost-btn">Reset to defaults</button>
+        </section>
+
+        <section class="settings-body hidden" data-panel="view">
+          <label class="field-label">Field of view — normal → total immersion</label>
+          <div id="coverage-row" class="preset-row"></div>
+          <label class="field-label" for="vertical-range">
+            Above / below horizon — <span id="vertical-val">±22°</span>
+          </label>
+          <input id="vertical-range" class="range" type="range" min="0" max="60" step="2" />
+          <p class="ai-note">
+            90° is a flat frontal window; 360° wraps results all the way around
+            you. Raise the horizon spread to stack results into a dome above and
+            below eye level.
+          </p>
+        </section>
+
+        <section class="settings-body hidden" data-panel="ai">
+          <label class="field-label" for="ai-provider">Provider</label>
+          <select id="ai-provider" class="input"></select>
+          <div id="ai-key-wrap">
+            <label class="field-label" for="ai-key">API key (stored in your browser only)</label>
+            <input id="ai-key" class="input" type="password" placeholder="sk-…" />
+          </div>
+          <div id="ai-ollama-wrap" class="hidden">
+            <label class="field-label" for="ai-ollama">Ollama URL</label>
+            <input id="ai-ollama" class="input" type="text" placeholder="http://localhost:11434" />
+          </div>
+          <label class="field-label" for="ai-model">Model</label>
+          <input id="ai-model" class="input" type="text" placeholder="(default)" />
+          <p class="ai-note" id="ai-note"></p>
+        </section>
+
+        <section class="settings-body hidden" data-panel="account">
+          <div id="acct-signedout">
+            <p class="ai-note" id="acct-status"></p>
+            <label class="field-label" for="acct-email">Email (magic link)</label>
+            <input id="acct-email" class="input" type="email" placeholder="you@example.com" />
+            <button id="acct-signin" class="ghost-btn">Send magic link</button>
+            <button id="acct-google" class="ghost-btn">Continue with Google</button>
+          </div>
+          <div id="acct-signedin" class="hidden">
+            <div class="acct-card">
+              <div class="acct-name" id="acct-name"></div>
+              <div class="acct-role"><span id="acct-role-badge" class="role-badge"></span></div>
+            </div>
+            <a id="acct-advertiser" class="ghost-btn hidden" href="./advertiser.html">Open advertiser portal →</a>
+            <button id="acct-signout" class="ghost-btn">Sign out</button>
+          </div>
+        </section>
+      </aside>
+
+      <div id="status" class="hidden"></div>
+
+      <!-- Center gaze reticle (only shown in cardboard mode) -->
+      <div id="reticle" class="hidden">
+        <svg viewBox="0 0 100 100">
+          <circle class="reticle-bg" cx="50" cy="50" r="40" />
+          <circle class="reticle-fill" cx="50" cy="50" r="40" />
+          <circle class="reticle-dot" cx="50" cy="50" r="4" />
+        </svg>
+      </div>
+
+      <!-- Exit button shown while in cardboard mode -->
+      <button id="exit-vr" class="hidden">✕ EXIT VR</button>
+
+      <div id="hint" class="hint">
+        Drag to look · type a query · tap <b>TILT</b> on your phone · drop in a
+        cardboard and tap <b>VR</b>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
