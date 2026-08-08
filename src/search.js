@@ -61,28 +61,43 @@ export async function search(query, limit = 10) {
  * CORS-enabled). Returns link-kind results (open in the in-app browser).
  */
 export async function xrNews(limit = 30) {
-  const q = 'virtual reality OR augmented reality OR mixed reality OR headset'
-  const url =
-    'https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=' +
-    limit +
-    '&query=' +
-    encodeURIComponent(q)
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`News fetch failed: ${res.status}`)
-  const data = await res.json()
-  return (data.hits || [])
-    .filter((h) => h.title && (h.url || h.story_url))
-    .map((h) => ({
-      id: 'hn-' + h.objectID,
-      kind: 'link', // opens the in-app browser
-      title: h.title,
-      snippet:
-        (h.points ? `${h.points} pts` : '') +
-        (h.author ? ` · by ${h.author}` : '') +
-        (h.num_comments ? ` · ${h.num_comments} comments` : ''),
-      url: h.url || h.story_url,
-      thumb: null,
-    }))
+  // HN Algolia treats the query as plain terms (no boolean OR), so we run a
+  // few XR queries and merge, newest first.
+  const queries = ['virtual reality', 'augmented reality', 'VR headset', 'mixed reality']
+  const per = Math.max(10, Math.ceil(limit / 2))
+  const reqs = queries.map((q) =>
+    fetch(
+      'https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=' +
+        per +
+        '&query=' +
+        encodeURIComponent(q)
+    )
+      .then((r) => (r.ok ? r.json() : { hits: [] }))
+      .catch(() => ({ hits: [] }))
+  )
+  const sets = await Promise.all(reqs)
+  const seen = new Set()
+  const out = []
+  for (const d of sets) {
+    for (const h of d.hits || []) {
+      if (!h.title || !(h.url || h.story_url) || seen.has(h.objectID)) continue
+      seen.add(h.objectID)
+      out.push({
+        id: 'hn-' + h.objectID,
+        kind: 'link', // opens the in-app browser
+        title: h.title,
+        snippet:
+          (h.points ? `${h.points} pts` : '') +
+          (h.author ? ` · by ${h.author}` : '') +
+          (h.num_comments ? ` · ${h.num_comments} comments` : ''),
+        url: h.url || h.story_url,
+        thumb: null,
+        _t: h.created_at_i || 0,
+      })
+    }
+  }
+  out.sort((a, b) => b._t - a._t)
+  return out.slice(0, limit)
 }
 
 function stripHtml(s) {
