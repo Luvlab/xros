@@ -16,6 +16,7 @@ import { Auth } from './auth.js'
 import { AdLayer } from './ads.js'
 import { Shell } from './shell.js'
 import { can, roleLabel } from './rbac.js'
+import { Background, BG_PRESETS } from './background.js'
 
 const container = document.getElementById('scene')
 const { scene, camera, renderer } = createWorld(container)
@@ -24,16 +25,22 @@ const results = new ResultsLayer(scene)
 const ads = new AdLayer(scene)
 const shell = new Shell(scene)
 const auth = new Auth()
+const background = new Background(scene)
 
 // ---- settings + theme ----
 const settings = new Settings()
 settings.onThemeChange((t) => {
-  // Keep the 3D world in sync with the CSS background colour.
-  const col = new THREE.Color(t.bg)
-  scene.background = col
-  scene.fog.color = col
+  // Feed theme colours to the procedural backgrounds (they manage scene.background).
+  background.setThemeColors({ accent: t.accent, accent2: t.accent2, bg: t.bg })
 })
 settings.applyTheme()
+
+// Apply the saved background choice.
+if (settings.data.background.preset === 'image' && settings.data.background.imageUrl) {
+  background.setImage(settings.data.background.imageUrl)
+} else {
+  background.setPreset(settings.data.background.preset || 'stars')
+}
 
 const stereo = new StereoEffect(renderer)
 stereo.setEyeSeparation(0.064)
@@ -65,7 +72,7 @@ async function runSearch(q) {
   const token = ++searchToken
   setStatus('Searching…')
   try {
-    const items = await search(q, 10)
+    const items = await search(q, 40)
     if (token !== searchToken) return // a newer search superseded this one
     if (!items.length) {
       setStatus(`No results for “${q}”.`)
@@ -395,13 +402,15 @@ const vEl = {
   coverageRow: document.getElementById('coverage-row'),
   verticalRange: document.getElementById('vertical-range'),
   verticalVal: document.getElementById('vertical-val'),
+  fontRange: document.getElementById('font-range'),
+  fontVal: document.getElementById('font-val'),
 }
 
 function applyView() {
   const v = settings.data.view
   camera.fov = COVERAGE_FOV[v.coverage] || 70
   camera.updateProjectionMatrix()
-  results.setView(v.coverage, v.vertical)
+  results.setView(v.coverage, v.vertical, v.fontSize)
   syncViewUI()
 }
 
@@ -425,6 +434,11 @@ function wireView() {
     settings.save()
     applyView()
   })
+  vEl.fontRange.addEventListener('input', () => {
+    settings.data.view.fontSize = Number(vEl.fontRange.value)
+    settings.save()
+    applyView()
+  })
   // Quick-cycle button in the top bar.
   vEl.fovBtn.addEventListener('click', () => {
     const i = COVERAGE_STEPS.indexOf(settings.data.view.coverage)
@@ -437,21 +451,76 @@ function syncViewUI() {
   vEl.fovBtn.textContent = `◐ ${v.coverage}°`
   vEl.verticalRange.value = String(v.vertical)
   vEl.verticalVal.textContent = `±${v.vertical}°`
+  vEl.fontRange.value = String(v.fontSize)
+  vEl.fontVal.textContent = String(v.fontSize)
   ;[...vEl.coverageRow.children].forEach((b) =>
     b.classList.toggle('active', Number(b.dataset.cov) === v.coverage)
   )
 }
 wireView()
 
-// ---- selection (click on desktop, gaze dwell in xr) ----
+// ---- in-app browser (embed links; fall back to a new tab) ----
+const bEl = {
+  panel: document.getElementById('browser'),
+  title: document.getElementById('browser-title'),
+  frame: document.getElementById('browser-frame'),
+  blocked: document.getElementById('browser-blocked'),
+  newtab: document.getElementById('browser-newtab'),
+  close: document.getElementById('browser-close'),
+  blockedOpen: document.getElementById('browser-blocked-open'),
+}
+let browserUrl = ''
+function openInApp(url, title) {
+  if (!url) return
+  browserUrl = url
+  bEl.title.textContent = title || url
+  bEl.blocked.classList.add('hidden')
+  bEl.panel.classList.remove('hidden')
+  let loaded = false
+  bEl.frame.onload = () => {
+    loaded = true
+    bEl.blocked.classList.add('hidden')
+  }
+  bEl.frame.src = url
+  // If nothing loads in time the site likely refuses embedding — offer a tab.
+  setTimeout(() => {
+    if (!loaded) bEl.blocked.classList.remove('hidden')
+  }, 3500)
+}
+function closeBrowser() {
+  bEl.panel.classList.add('hidden')
+  bEl.frame.src = 'about:blank'
+}
+function openNewTab() {
+  if (browserUrl) window.open(browserUrl, '_blank', 'noopener')
+}
+bEl.close.addEventListener('click', closeBrowser)
+bEl.newtab.addEventListener('click', openNewTab)
+bEl.blockedOpen.addEventListener('click', openNewTab)
+
+// ---- selection: tap in ANY mode (cardboard taps the centre gaze target) ----
+let tapStart = null
 renderer.domElement.addEventListener('pointerdown', (e) => {
-  if (mode !== 'desktop') return
-  const rect = renderer.domElement.getBoundingClientRect()
-  const ndc = new THREE.Vector2(
-    ((e.clientX - rect.left) / rect.width) * 2 - 1,
-    -((e.clientY - rect.top) / rect.height) * 2 + 1
-  )
-  const hit = pick(ndc)
+  tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }
+})
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!tapStart) return
+  const moved = Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y)
+  const dt = performance.now() - tapStart.t
+  tapStart = null
+  if (moved > 12 || dt > 600) return // a drag or long-press, not a tap
+  let hit
+  if (mode === 'cardboard') {
+    hit = pick(centerNdc)
+  } else {
+    const rect = renderer.domElement.getBoundingClientRect()
+    hit = pick(
+      new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      )
+    )
+  }
   if (hit) select(hit)
 })
 
@@ -473,14 +542,18 @@ function select(mesh) {
   if (ctrl === 'close') return results.hideReader()
   if (ctrl === 'prev') return results.readerPage(-1)
   if (ctrl === 'next') return results.readerPage(1)
+  if (ctrl === 'source') {
+    const a = results.readerArticle()
+    return openInApp(a?.url, a?.title)
+  }
 
+  // Links (ads, apps) embed in the in-app browser instead of a new tab.
   if (mesh.userData.ad) {
-    ads.activate(auth.user?.id || null)
-    return
+    ads.logEvent('click', auth.user?.id || null)
+    return openInApp(mesh.userData.ad.click_url, mesh.userData.ad.title || 'Sponsored')
   }
   if (mesh.userData.app) {
-    shell.activate(mesh)
-    return
+    return openInApp(mesh.userData.app.url, mesh.userData.app.title)
   }
   if (mesh.userData.result) {
     openReader(mesh.userData.result)
@@ -545,6 +618,82 @@ function onResize() {
 }
 window.addEventListener('resize', onResize)
 
+// ---- background picker ----
+const gEl = {
+  row: document.getElementById('bg-row'),
+  url: document.getElementById('bg-url'),
+  urlGo: document.getElementById('bg-url-go'),
+  file: document.getElementById('bg-file'),
+}
+function wireBackground() {
+  BG_PRESETS.forEach((p) => {
+    const b = document.createElement('button')
+    b.className = 'preset-chip'
+    b.dataset.bg = p.id
+    b.textContent = p.label
+    b.addEventListener('click', () => {
+      settings.data.background = { preset: p.id, imageUrl: '' }
+      settings.save()
+      background.setPreset(p.id)
+      syncBgUI()
+    })
+    gEl.row.appendChild(b)
+  })
+  gEl.urlGo.addEventListener('click', () => {
+    const url = gEl.url.value.trim()
+    if (!url) return
+    settings.data.background = { preset: 'image', imageUrl: url }
+    settings.save()
+    background.setImage(url)
+    syncBgUI()
+  })
+  gEl.file.addEventListener('change', () => {
+    const f = gEl.file.files?.[0]
+    if (!f) return
+    // Uploads are session-only (not persisted — too large for localStorage).
+    settings.data.background = { preset: 'image', imageUrl: '' }
+    settings.save()
+    background.setImageFromFile(f)
+    syncBgUI()
+  })
+  syncBgUI()
+}
+function syncBgUI() {
+  const cur = settings.data.background.preset
+  gEl.url.value = settings.data.background.imageUrl || ''
+  ;[...gEl.row.children].forEach((b) =>
+    b.classList.toggle('active', b.dataset.bg === cur)
+  )
+}
+wireBackground()
+
+// ---- refresh + PWA install ----
+document.getElementById('refresh-btn').addEventListener('click', () => {
+  runSearch(ui.input.value || 'extended reality')
+})
+
+let deferredPrompt = null
+const installBtn = document.getElementById('install-btn')
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  deferredPrompt = e
+  installBtn.classList.remove('hidden')
+})
+installBtn.addEventListener('click', async () => {
+  if (!deferredPrompt) return
+  deferredPrompt.prompt()
+  await deferredPrompt.userChoice
+  deferredPrompt = null
+  installBtn.classList.add('hidden')
+})
+window.addEventListener('appinstalled', () => installBtn.classList.add('hidden'))
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {})
+  })
+}
+
 // ---- render loop ----
 const clock = new THREE.Clock()
 function tick() {
@@ -553,6 +702,7 @@ function tick() {
   results.update(dt)
   ads.update(dt)
   shell.update(dt)
+  background.update(dt)
   updateGaze(dt)
 
   if (mode === 'cardboard') {

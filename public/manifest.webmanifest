@@ -1,0 +1,14 @@
+{
+  "name": "XR Search — XROS",
+  "short_name": "XR Search",
+  "description": "Open-source immersive AI browser & search engine. Desktop, phone tilt, VR cardboard.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#05060a",
+  "theme_color": "#05060a",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

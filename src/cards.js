@@ -4,8 +4,8 @@ import * as THREE from 'three'
  * Builds and manages the floating result cards arranged on a sphere around
  * the user, plus the expanded detail panel.
  */
-const CARD_W = 1.5
-const CARD_H = 1.05
+const BASE_W = 1.15 // card width at font size 15 (scales with fontSize)
+const BASE_H = 0.8
 const RADIUS = 4.2
 
 export class ResultsLayer {
@@ -25,15 +25,16 @@ export class ResultsLayer {
     this._texLoader.setCrossOrigin('anonymous')
     this._t = 0
     this._results = []
-    // View config: how far results wrap horizontally (deg) and how far they
-    // spread above/below the horizon (± deg). Set via setView().
-    this.view = { coverage: 120, vertical: 22 }
+    // View config: horizontal wrap (deg), vertical spread (± deg), and
+    // fontSize which sets card size → how densely results pack.
+    this.view = { coverage: 120, vertical: 22, fontSize: 15 }
   }
 
   /** Update the immersion/view and re-lay out the current results. */
-  setView(coverage, vertical) {
+  setView(coverage, vertical, fontSize) {
     if (coverage != null) this.view.coverage = coverage
     if (vertical != null) this.view.vertical = vertical
+    if (fontSize != null) this.view.fontSize = fontSize
     if (this._results.length) this._layout()
   }
 
@@ -64,51 +65,55 @@ export class ResultsLayer {
   _layout() {
     this.clear()
     const results = this._results
-    const n = results.length
-    if (!n) return
+    if (!results.length) return
 
     const coverage = this.view.coverage
     const vertRad = THREE.MathUtils.degToRad(this.view.vertical)
     const fullRing = coverage >= 330
+    const arc = fullRing ? Math.PI * 2 : THREE.MathUtils.degToRad(coverage)
 
-    // More vertical spread earns more rows; wider coverage earns more columns.
-    const rows = Math.max(1, Math.min(3, Math.round(this.view.vertical / 16) + 1))
-    const cols = Math.ceil(n / rows)
-    const arc = THREE.MathUtils.degToRad(Math.min(coverage, 360))
+    // Card size scales with font size; smaller cards pack more results in.
+    const scale = (this.view.fontSize || 15) / 15
+    const cardW = BASE_W * scale
+    const cardH = BASE_H * scale
+    const gap = 1.04 // tight spacing
 
-    results.forEach((data, i) => {
+    // Angular footprint of one card at the sphere radius.
+    const azStep = (cardW * gap) / RADIUS
+    const elStep = (cardH * gap) / RADIUS
+
+    // How many fit: columns across the arc, rows within the vertical spread.
+    const cols = Math.max(1, Math.floor(arc / azStep))
+    const rows = Math.max(1, Math.min(7, Math.floor((2 * vertRad) / elStep) + 1))
+    const capacity = cols * rows
+    const n = Math.min(results.length, capacity)
+    const rowsUsed = Math.max(1, Math.ceil(n / cols))
+
+    for (let i = 0; i < n; i++) {
+      const data = results[i]
       const row = Math.floor(i / cols)
       const col = i % cols
       const colsInRow = Math.min(cols, n - row * cols)
 
-      // Azimuth: full ring wraps 360° (front-anchored); otherwise spread ±arc/2.
       const az = fullRing
         ? col * ((2 * Math.PI) / colsInRow)
-        : (col - (colsInRow - 1) / 2) * (arc / Math.max(colsInRow, 1))
+        : (col - (colsInRow - 1) / 2) * azStep
+      const elev = rowsUsed > 1 ? ((rowsUsed - 1) / 2 - row) * elStep : 0
 
-      // Elevation: rows fan out symmetrically above/below the horizon.
-      const elev =
-        rows > 1 ? ((rows - 1) / 2 - row) * ((2 * vertRad) / (rows - 1)) : 0
-
-      const mesh = this._makeCard(data)
+      const mesh = this._makeCard(data, cardW, cardH)
       placeOnSphere(mesh, az, elev, RADIUS)
       mesh.lookAt(0, 0, 0)
 
       mesh.userData.result = data
       mesh.userData.index = i
       this.group.add(mesh)
-      this.cards.push({
-        mesh,
-        data,
-        basePos: mesh.position.clone(),
-        baseScale: 1,
-      })
-    })
+      this.cards.push({ mesh, data, basePos: mesh.position.clone(), baseScale: 1 })
+    }
   }
 
-  _makeCard(data) {
+  _makeCard(data, cardW = BASE_W, cardH = BASE_H) {
     const tex = this._drawCardTexture(data)
-    const geo = new THREE.PlaneGeometry(CARD_W, CARD_H)
+    const geo = new THREE.PlaneGeometry(cardW, cardH)
     const mat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
@@ -231,11 +236,12 @@ export class ResultsLayer {
     group.add(panel)
     this._readerPanel = panel
 
-    // Controls: prev / next / close (each its own mesh for gaze + click)
+    // Controls: prev / close / open-source / next (each its own mesh)
     this._readerCtrls = [
-      this._makeCtrl('‹', 'prev', -0.7),
-      this._makeCtrl('✕', 'close', 0),
-      this._makeCtrl('›', 'next', 0.7),
+      this._makeCtrl('‹', 'prev', -0.9),
+      this._makeCtrl('✕', 'close', -0.3),
+      this._makeCtrl('↗', 'source', 0.3),
+      this._makeCtrl('›', 'next', 0.9),
     ]
     for (const c of this._readerCtrls) {
       c.position.y = -1.28
@@ -274,7 +280,12 @@ export class ResultsLayer {
       new THREE.MeshBasicMaterial({ map: tex, transparent: true })
     )
     mesh.userData.readerCtrl = action
+    mesh.position.x = x
     return mesh
+  }
+
+  readerArticle() {
+    return this._article
   }
 
   _renderReaderPage() {

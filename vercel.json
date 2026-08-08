@@ -3,10 +3,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/xros/assets/(.*)", "destination": "/assets/$1" },
     { "source": "/xros/advertiser", "destination": "/advertiser.html" },
     { "source": "/xros", "destination": "/index.html" },
     { "source": "/xros/", "destination": "/index.html" },
-    { "source": "/xros/(.*)", "destination": "/index.html" }
+    { "source": "/xros/(.*)", "destination": "/$1" }
   ]
 }

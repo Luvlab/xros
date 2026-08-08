@@ -32,8 +32,10 @@ export function createWorld(container) {
   rim.position.set(-4, -2, -6)
   scene.add(rim)
 
-  // Starfield
-  scene.add(makeStars(1400, 40))
+  // Starfield (named so the Background module can toggle it per preset)
+  const stars = makeStars(1400, 40)
+  stars.name = 'stars'
+  scene.add(stars)
 
   // Grid floor
   const grid = new THREE.GridHelper(60, 60, 0x2a3170, 0x141838)

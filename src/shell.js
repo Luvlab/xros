@@ -51,9 +51,9 @@ export class Shell {
     apps.forEach((app, i) => {
       const az = (i - (n - 1) / 2) * span
       const mesh = this._makeTile(app)
-      const R = 3.6
-      mesh.position.set(Math.sin(az) * R, -2.0, -Math.cos(az) * R)
-      mesh.lookAt(0, -0.3, 0)
+      const R = 3.3
+      mesh.position.set(Math.sin(az) * R, -1.5, -Math.cos(az) * R)
+      mesh.lookAt(0, -0.2, 0)
       mesh.userData.app = app
       this.group.add(mesh)
       this.tiles.push(mesh)
@@ -124,7 +124,7 @@ export class Shell {
   update(dt) {
     this._t += dt
     for (let i = 0; i < this.tiles.length; i++) {
-      this.tiles[i].position.y = -2.0 + Math.sin(this._t * 0.5 + i) * 0.03
+      this.tiles[i].position.y = -1.5 + Math.sin(this._t * 0.5 + i) * 0.03
     }
   }
 }

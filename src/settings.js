@@ -57,6 +57,11 @@ const DEFAULTS = {
   view: {
     coverage: 120, // horizontal wrap of results: 90 | 120 | 180 | 360
     vertical: 22, // ± degrees results spread above/below the horizon (0–60)
+    fontSize: 15, // card/text size → drives how many results pack in (10–26)
+  },
+  background: {
+    preset: 'stars', // procedural preset id, or 'image'
+    imageUrl: '', // equirectangular 360 image URL (when preset === 'image')
   },
 }
 
