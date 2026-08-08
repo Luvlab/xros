@@ -754,6 +754,8 @@ wireBackground()
 document.getElementById('refresh-btn').addEventListener('click', () => {
   if (homeMode && !ui.input.value.trim()) loadHome()
   else runSearch(ui.input.value)
+  // Also check for a new app version in the background.
+  navigator.serviceWorker?.getRegistration().then((r) => r && r.update()).catch(() => {})
 })
 
 let deferredPrompt = null
