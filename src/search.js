@@ -46,6 +46,7 @@ export async function search(query, limit = 10) {
     .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
     .map((p) => ({
       id: String(p.pageid),
+      kind: 'wiki', // opens the in-scene reader
       title: p.title,
       snippet: stripHtml(p.extract || ''),
       url: `https://en.wikipedia.org/?curid=${p.pageid}`,
@@ -53,6 +54,35 @@ export async function search(query, limit = 10) {
     }))
 
   return items
+}
+
+/**
+ * XR tech news for the home page — recent stories from Hacker News (free,
+ * CORS-enabled). Returns link-kind results (open in the in-app browser).
+ */
+export async function xrNews(limit = 30) {
+  const q = 'virtual reality OR augmented reality OR mixed reality OR headset'
+  const url =
+    'https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=' +
+    limit +
+    '&query=' +
+    encodeURIComponent(q)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`News fetch failed: ${res.status}`)
+  const data = await res.json()
+  return (data.hits || [])
+    .filter((h) => h.title && (h.url || h.story_url))
+    .map((h) => ({
+      id: 'hn-' + h.objectID,
+      kind: 'link', // opens the in-app browser
+      title: h.title,
+      snippet:
+        (h.points ? `${h.points} pts` : '') +
+        (h.author ? ` · by ${h.author}` : '') +
+        (h.num_comments ? ` · ${h.num_comments} comments` : ''),
+      url: h.url || h.story_url,
+      thumb: null,
+    }))
 }
 
 function stripHtml(s) {

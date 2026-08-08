@@ -3,7 +3,7 @@ import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js'
 import { createWorld } from './scene.js'
 import { LookControls } from './controls.js'
 import { ResultsLayer } from './cards.js'
-import { search, fetchArticle } from './search.js'
+import { search, fetchArticle, xrNews } from './search.js'
 import {
   Settings,
   PRESETS,
@@ -67,8 +67,38 @@ const DWELL_TIME = 1.4 // seconds of gaze to trigger
 
 // ---- search flow ----
 let searchToken = 0
+let homeMode = true // home shows XR tech news; a query switches to search
+
+function showAd() {
+  results.setAd(ads.creative)
+  ads.logEvent('impression', auth?.user?.id || null)
+}
+
+// Home page: XR tech news feed.
+async function loadHome() {
+  homeMode = true
+  const token = ++searchToken
+  setStatus('Loading XR news…')
+  try {
+    const items = await xrNews(40)
+    if (token !== searchToken) return
+    if (!items.length) {
+      setStatus('No XR news right now.')
+      return
+    }
+    setStatus('')
+    results.setResults(items)
+    showAd()
+    controls.recenter()
+  } catch (err) {
+    console.error(err)
+    setStatus('Could not load XR news.')
+  }
+}
+
 async function runSearch(q) {
-  if (!q.trim()) return
+  if (!q.trim()) return loadHome() // empty query returns to the news home
+  homeMode = false
   const token = ++searchToken
   setStatus('Searching…')
   try {
@@ -81,6 +111,7 @@ async function runSearch(q) {
     }
     setStatus('')
     results.setResults(items)
+    showAd()
     controls.recenter()
     maybeAnswer(q, items, token)
   } catch (err) {
@@ -498,13 +529,66 @@ bEl.close.addEventListener('click', closeBrowser)
 bEl.newtab.addEventListener('click', openNewTab)
 bEl.blockedOpen.addEventListener('click', openNewTab)
 
+// ---- zoom: scroll / pinch to zoom in a bit; zoom out returns to centre ----
+let targetZoom = 0
+let curZoom = 0
+let multiTouch = false
+const ZOOM_MAX = 2.4
+renderer.domElement.addEventListener(
+  'wheel',
+  (e) => {
+    e.preventDefault()
+    targetZoom = THREE.MathUtils.clamp(targetZoom - e.deltaY * 0.0015, 0, ZOOM_MAX)
+  },
+  { passive: false }
+)
+renderer.domElement.addEventListener('dblclick', () => {
+  targetZoom = 0 // back to centre
+})
+let pinchLast = null
+const touchDist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+renderer.domElement.addEventListener('touchstart', (e) => {
+  if (e.touches.length >= 2) {
+    multiTouch = true
+    pinchLast = touchDist(e.touches)
+  }
+})
+renderer.domElement.addEventListener(
+  'touchmove',
+  (e) => {
+    if (e.touches.length === 2) {
+      const d = touchDist(e.touches)
+      if (pinchLast != null) {
+        targetZoom = THREE.MathUtils.clamp(targetZoom + (d - pinchLast) * 0.006, 0, ZOOM_MAX)
+      }
+      pinchLast = d
+      e.preventDefault()
+    }
+  },
+  { passive: false }
+)
+renderer.domElement.addEventListener('touchend', (e) => {
+  if (e.touches.length === 0) {
+    pinchLast = null
+    multiTouch = false
+  }
+})
+function applyZoom() {
+  curZoom += (targetZoom - curZoom) * 0.15
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+  camera.position.copy(fwd.multiplyScalar(curZoom))
+}
+
 // ---- selection: tap in ANY mode (cardboard taps the centre gaze target) ----
 let tapStart = null
 renderer.domElement.addEventListener('pointerdown', (e) => {
   tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }
 })
 renderer.domElement.addEventListener('pointerup', (e) => {
-  if (!tapStart) return
+  if (!tapStart || multiTouch) {
+    tapStart = null
+    return
+  }
   const moved = Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y)
   const dt = performance.now() - tapStart.t
   tapStart = null
@@ -526,11 +610,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 
 function pick(ndc) {
   raycaster.setFromCamera(ndc, camera)
-  const targets = [
-    ...results.intersectables(),
-    ...ads.intersectables(),
-    ...shell.intersectables(),
-  ]
+  const targets = [...results.intersectables(), ...shell.intersectables()]
   const hits = raycaster.intersectObjects(targets, false)
   return hits.length ? hits[0].object : null
 }
@@ -556,7 +636,10 @@ function select(mesh) {
     return openInApp(mesh.userData.app.url, mesh.userData.app.title)
   }
   if (mesh.userData.result) {
-    openReader(mesh.userData.result)
+    const r = mesh.userData.result
+    // News/link results open in the in-app browser; wiki opens the reader.
+    if (r.kind === 'link') return openInApp(r.url, r.title)
+    openReader(r)
   }
 }
 
@@ -669,7 +752,8 @@ wireBackground()
 
 // ---- refresh + PWA install ----
 document.getElementById('refresh-btn').addEventListener('click', () => {
-  runSearch(ui.input.value || 'extended reality')
+  if (homeMode && !ui.input.value.trim()) loadHome()
+  else runSearch(ui.input.value)
 })
 
 let deferredPrompt = null
@@ -699,8 +783,8 @@ const clock = new THREE.Clock()
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.1)
   controls.update()
+  applyZoom()
   results.update(dt)
-  ads.update(dt)
   shell.update(dt)
   background.update(dt)
   updateGaze(dt)
@@ -718,11 +802,11 @@ auth.init().then(() => {
   auth.onChange(() => syncAccountUI())
   syncAccountUI()
 })
-ads.load()
 shell.load()
 applyView()
-runSearch('extended reality')
+// Load the ad, then the XR-news home page (with the ad slotted in).
+ads.load().then(() => loadHome())
 tick()
 
 // expose for quick console tinkering
-window.__xr = { scene, camera, controls, results, ads, shell, auth, runSearch, can, roleLabel }
+window.__xr = { scene, camera, controls, results, ads, shell, auth, runSearch, loadHome, can, roleLabel }

@@ -47,12 +47,12 @@ export class Shell {
   render(apps) {
     this.clear()
     const n = apps.length
-    const span = THREE.MathUtils.degToRad(22)
+    const span = THREE.MathUtils.degToRad(14) // tighter — buttons closer together
     apps.forEach((app, i) => {
       const az = (i - (n - 1) / 2) * span
       const mesh = this._makeTile(app)
-      const R = 3.3
-      mesh.position.set(Math.sin(az) * R, -1.5, -Math.cos(az) * R)
+      const R = 2.8 // nearer to the viewer
+      mesh.position.set(Math.sin(az) * R, -1.3, -Math.cos(az) * R)
       mesh.lookAt(0, -0.2, 0)
       mesh.userData.app = app
       this.group.add(mesh)
@@ -92,7 +92,7 @@ export class Shell {
     const tex = new THREE.CanvasTexture(canvas)
     tex.colorSpace = THREE.SRGBColorSpace
     tex.anisotropy = 4
-    const geo = new THREE.PlaneGeometry(1.0, 0.7)
+    const geo = new THREE.PlaneGeometry(0.72, 0.5)
     const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true })
     return new THREE.Mesh(geo, mat)
   }
@@ -124,7 +124,7 @@ export class Shell {
   update(dt) {
     this._t += dt
     for (let i = 0; i < this.tiles.length; i++) {
-      this.tiles[i].position.y = -1.5 + Math.sin(this._t * 0.5 + i) * 0.03
+      this.tiles[i].position.y = -1.3 + Math.sin(this._t * 0.5 + i) * 0.03
     }
   }
 }

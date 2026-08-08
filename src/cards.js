@@ -25,9 +25,16 @@ export class ResultsLayer {
     this._texLoader.setCrossOrigin('anonymous')
     this._t = 0
     this._results = []
+    this._ad = null // in-feed ad creative, slotted among the results
     // View config: horizontal wrap (deg), vertical spread (± deg), and
     // fontSize which sets card size → how densely results pack.
     this.view = { coverage: 120, vertical: 22, fontSize: 15 }
+  }
+
+  /** Set the in-feed ad creative (rendered as a card between results). */
+  setAd(creative) {
+    this._ad = creative
+    if (this._results.length) this._layout()
   }
 
   /** Update the immersion/view and re-lay out the current results. */
@@ -64,8 +71,10 @@ export class ResultsLayer {
    */
   _layout() {
     this.clear()
-    const results = this._results
-    if (!results.length) return
+    // Build the render list: results with the ad slotted a few cards in.
+    const items = this._results.slice()
+    if (this._ad) items.splice(Math.min(3, items.length), 0, { __ad: true, creative: this._ad })
+    if (!items.length) return
 
     const coverage = this.view.coverage
     const vertRad = THREE.MathUtils.degToRad(this.view.vertical)
@@ -86,11 +95,11 @@ export class ResultsLayer {
     const cols = Math.max(1, Math.floor(arc / azStep))
     const rows = Math.max(1, Math.min(7, Math.floor((2 * vertRad) / elStep) + 1))
     const capacity = cols * rows
-    const n = Math.min(results.length, capacity)
+    const n = Math.min(items.length, capacity)
     const rowsUsed = Math.max(1, Math.ceil(n / cols))
 
     for (let i = 0; i < n; i++) {
-      const data = results[i]
+      const data = items[i]
       const row = Math.floor(i / cols)
       const col = i % cols
       const colsInRow = Math.min(cols, n - row * cols)
@@ -100,15 +109,60 @@ export class ResultsLayer {
         : (col - (colsInRow - 1) / 2) * azStep
       const elev = rowsUsed > 1 ? ((rowsUsed - 1) / 2 - row) * elStep : 0
 
-      const mesh = this._makeCard(data, cardW, cardH)
+      const mesh = data.__ad
+        ? this._makeAdCard(data.creative, cardW, cardH)
+        : this._makeCard(data, cardW, cardH)
       placeOnSphere(mesh, az, elev, RADIUS)
       mesh.lookAt(0, 0, 0)
 
-      mesh.userData.result = data
+      if (data.__ad) mesh.userData.ad = data.creative
+      else mesh.userData.result = data
       mesh.userData.index = i
       this.group.add(mesh)
       this.cards.push({ mesh, data, basePos: mesh.position.clone(), baseScale: 1 })
     }
+  }
+
+  _makeAdCard(creative, cardW = BASE_W, cardH = BASE_H) {
+    const W = 512
+    const H = 358
+    const canvas = document.createElement('canvas')
+    canvas.width = W
+    canvas.height = H
+    const ctx = canvas.getContext('2d')
+    const accent = cssVar('--accent2', '#b96bff')
+
+    roundRect(ctx, 6, 6, W - 12, H - 12, 22)
+    ctx.fillStyle = 'rgba(18,12,28,0.96)'
+    ctx.fill()
+    ctx.lineWidth = 3
+    ctx.strokeStyle = accent
+    ctx.stroke()
+
+    // "AD" chip
+    ctx.fillStyle = accent
+    roundRect(ctx, 24, 24, 64, 32, 8)
+    ctx.fill()
+    ctx.fillStyle = '#0a0a12'
+    ctx.font = '700 20px ui-monospace, Menlo, monospace'
+    ctx.fillText('AD', 40, 47)
+
+    ctx.fillStyle = '#f2ecff'
+    ctx.font = '700 26px ui-monospace, Menlo, monospace'
+    wrapText(ctx, creative.title || '', 24, 100, W - 48, 30, 2)
+
+    ctx.fillStyle = '#c7b9e6'
+    ctx.font = '400 19px ui-monospace, Menlo, monospace'
+    wrapText(ctx, creative.body || '', 24, 168, W - 48, 26, 5)
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.anisotropy = 4
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(cardW, cardH),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide })
+    )
+    return mesh
   }
 
   _makeCard(data, cardW = BASE_W, cardH = BASE_H) {
