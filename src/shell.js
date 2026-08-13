@@ -47,11 +47,13 @@ export class Shell {
   render(apps) {
     this.clear()
     const n = apps.length
-    const span = THREE.MathUtils.degToRad(14) // tighter — buttons closer together
+    const R = 2.8 // nearer to the viewer
+    // Angular step derived from tile width so tiles can NEVER overlap, however
+    // many there are (0.72 wide + a gap, at radius R).
+    const step = (0.72 * 1.25) / R
     apps.forEach((app, i) => {
-      const az = (i - (n - 1) / 2) * span
+      const az = (i - (n - 1) / 2) * step
       const mesh = this._makeTile(app)
-      const R = 2.8 // nearer to the viewer
       mesh.position.set(Math.sin(az) * R, -1.3, -Math.cos(az) * R)
       mesh.lookAt(0, -0.2, 0)
       mesh.userData.app = app

@@ -212,8 +212,30 @@ export class ResultsLayer {
     ctx.strokeStyle = 'rgba(122,134,184,0.35)'
     ctx.stroke()
 
+    // Image results: full-bleed image with the title over a gradient scrim.
+    if (image && data.kind === 'image') {
+      ctx.save()
+      roundRect(ctx, 8, 8, W - 16, H - 16, 20)
+      ctx.clip()
+      const c = cover(image.width, image.height, W - 16, H - 16)
+      ctx.drawImage(image, c.sx, c.sy, c.sw, c.sh, 8, 8, W - 16, H - 16)
+      const g = ctx.createLinearGradient(0, H - 150, 0, H)
+      g.addColorStop(0, 'rgba(6,6,10,0)')
+      g.addColorStop(1, 'rgba(6,6,10,0.92)')
+      ctx.fillStyle = g
+      ctx.fillRect(8, H - 150, W - 16, 142)
+      ctx.restore()
+      ctx.fillStyle = '#e8ecff'
+      ctx.font = '700 24px ui-monospace, Menlo, monospace'
+      wrapText(ctx, data.title, 24, H - 66, W - 48, 28, 2)
+      const tex0 = new THREE.CanvasTexture(canvas)
+      tex0.colorSpace = THREE.SRGBColorSpace
+      tex0.anisotropy = 4
+      return tex0
+    }
+
     let textTop = 30
-    // Optional image band
+    // Optional image band (wiki thumbnails, video stills)
     if (image) {
       ctx.save()
       roundRect(ctx, 18, 18, W - 36, 150, 14)
@@ -221,7 +243,27 @@ export class ResultsLayer {
       const { sx, sy, sw, sh } = cover(image.width, image.height, W - 36, 150)
       ctx.drawImage(image, sx, sy, sw, sh, 18, 18, W - 36, 150)
       ctx.restore()
+      // Play badge for videos
+      if (data.kind === 'video') {
+        ctx.fillStyle = 'rgba(6,6,10,0.6)'
+        ctx.beginPath()
+        ctx.arc(W / 2, 93, 30, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#ffffff'
+        ctx.beginPath()
+        ctx.moveTo(W / 2 - 10, 78)
+        ctx.lineTo(W / 2 - 10, 108)
+        ctx.lineTo(W / 2 + 16, 93)
+        ctx.closePath()
+        ctx.fill()
+      }
       textTop = 190
+    } else if (data.kind === 'place') {
+      // Map pin marker for places
+      ctx.fillStyle = cssVar('--accent', '#6af7ff')
+      ctx.font = '700 30px ui-monospace, Menlo, monospace'
+      ctx.fillText('📍', 26, 54)
+      textTop = 76
     }
 
     // Title

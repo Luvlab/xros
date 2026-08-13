@@ -3,7 +3,15 @@ import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js'
 import { createWorld } from './scene.js'
 import { LookControls } from './controls.js'
 import { ResultsLayer } from './cards.js'
-import { search, fetchArticle, xrNews } from './search.js'
+import {
+  search,
+  fetchArticle,
+  xrNews,
+  searchImages,
+  searchVideos,
+  searchPlaces,
+  shoppingLinks,
+} from './search.js'
 import {
   Settings,
   PRESETS,
@@ -67,45 +75,41 @@ const DWELL_TIME = 1.4 // seconds of gaze to trigger
 
 // ---- search flow ----
 let searchToken = 0
-let homeMode = true // home shows XR tech news; a query switches to search
+let currentFilter = 'all' // all | images | videos | maps | shopping | news
+let homeMode = true // no query + All → XR news home
 
 function showAd() {
   results.setAd(ads.creative)
   ads.logEvent('impression', auth?.user?.id || null)
 }
 
-// Home page: XR tech news feed.
-async function loadHome() {
-  homeMode = true
+// Filter-aware dispatch. Reads the search box + the active filter tab.
+async function doSearch() {
+  const q = ui.input.value.trim()
+  homeMode = currentFilter === 'all' && !q
   const token = ++searchToken
-  setStatus('Loading XR news…')
+  const label = { images: 'images', videos: 'videos', maps: 'maps' }[currentFilter]
+  setStatus(label ? `Searching ${label}…` : q ? 'Searching…' : 'Loading XR news…')
   try {
-    const items = await xrNews(40)
+    let items = []
+    if (currentFilter === 'news' || (currentFilter === 'all' && !q)) {
+      items = await xrNews(40)
+    } else if (currentFilter === 'all') {
+      items = await search(q, 40)
+    } else {
+      const qq = q || 'virtual reality' // sensible default on empty query
+      if (currentFilter === 'images') items = await searchImages(qq, 40)
+      else if (currentFilter === 'videos') items = await searchVideos(qq, 30)
+      else if (currentFilter === 'maps') items = await searchPlaces(qq, 20)
+      else if (currentFilter === 'shopping') items = shoppingLinks(qq)
+    }
     if (token !== searchToken) return
     if (!items.length) {
-      setStatus('No XR news right now.')
-      return
-    }
-    setStatus('')
-    results.setResults(items)
-    showAd()
-    controls.recenter()
-  } catch (err) {
-    console.error(err)
-    setStatus('Could not load XR news.')
-  }
-}
-
-async function runSearch(q) {
-  if (!q.trim()) return loadHome() // empty query returns to the news home
-  homeMode = false
-  const token = ++searchToken
-  setStatus('Searching…')
-  try {
-    const items = await search(q, 40)
-    if (token !== searchToken) return // a newer search superseded this one
-    if (!items.length) {
-      setStatus(`No results for “${q}”.`)
+      setStatus(
+        currentFilter === 'videos'
+          ? 'Videos unavailable right now — try another filter.'
+          : 'No results.'
+      )
       results.clear()
       return
     }
@@ -113,10 +117,10 @@ async function runSearch(q) {
     results.setResults(items)
     showAd()
     controls.recenter()
-    maybeAnswer(q, items, token)
+    if (currentFilter === 'all' && q) maybeAnswer(q, items, token)
   } catch (err) {
     console.error(err)
-    setStatus('Search failed — check your connection.')
+    setStatus(`${currentFilter} search failed — try another filter.`)
   }
 }
 
@@ -145,7 +149,17 @@ async function maybeAnswer(q, items, token) {
 ui.form.addEventListener('submit', (e) => {
   e.preventDefault()
   ui.input.blur()
-  runSearch(ui.input.value)
+  doSearch()
+})
+
+// ---- filter tabs ----
+const filterBtns = [...document.querySelectorAll('.filter-btn')]
+filterBtns.forEach((b) => {
+  b.addEventListener('click', () => {
+    currentFilter = b.dataset.filter
+    filterBtns.forEach((x) => x.classList.toggle('active', x === b))
+    doSearch()
+  })
 })
 
 function setStatus(text) {
@@ -637,9 +651,10 @@ function select(mesh) {
   }
   if (mesh.userData.result) {
     const r = mesh.userData.result
-    // News/link results open in the in-app browser; wiki opens the reader.
-    if (r.kind === 'link') return openInApp(r.url, r.title)
-    openReader(r)
+    // Only Wikipedia opens the in-scene reader; everything else (news, images,
+    // videos, places, shopping) opens embedded in the in-app browser.
+    if (r.kind === 'wiki') return openReader(r)
+    openInApp(r.url, r.title)
   }
 }
 
@@ -752,8 +767,7 @@ wireBackground()
 
 // ---- refresh + PWA install ----
 document.getElementById('refresh-btn').addEventListener('click', () => {
-  if (homeMode && !ui.input.value.trim()) loadHome()
-  else runSearch(ui.input.value)
+  doSearch()
   // Also check for a new app version in the background.
   navigator.serviceWorker?.getRegistration().then((r) => r && r.update()).catch(() => {})
 })
@@ -806,9 +820,9 @@ auth.init().then(() => {
 })
 shell.load()
 applyView()
-// Load the ad, then the XR-news home page (with the ad slotted in).
-ads.load().then(() => loadHome())
+// Load the ad, then the home page (XR news) with the ad slotted in.
+ads.load().then(doSearch)
 tick()
 
 // expose for quick console tinkering
-window.__xr = { scene, camera, controls, results, ads, shell, auth, runSearch, loadHome, can, roleLabel }
+window.__xr = { scene, camera, controls, results, ads, shell, auth, doSearch, can, roleLabel }

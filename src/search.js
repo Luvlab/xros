@@ -107,6 +107,121 @@ function stripHtml(s) {
     .trim()
 }
 
+/** Images — Openverse (CC-licensed, CORS-enabled, no key). kind:'image'. */
+export async function searchImages(q, limit = 40) {
+  const url =
+    'https://api.openverse.org/v1/images/?page_size=' +
+    limit +
+    '&q=' +
+    encodeURIComponent(q)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Image search failed: ${res.status}`)
+  const d = await res.json()
+  return (d.results || [])
+    .filter((r) => r.thumbnail)
+    .map((r) => ({
+      id: 'img-' + r.id,
+      kind: 'image',
+      title: r.title || 'Image',
+      snippet:
+        (r.creator ? `by ${r.creator}` : '') +
+        (r.license ? ` · ${String(r.license).toUpperCase()}` : ''),
+      url: r.foreign_landing_url || r.url,
+      thumb: r.thumbnail,
+    }))
+}
+
+/** Videos — Piped (YouTube front-end API, CORS). kind:'video'. */
+export async function searchVideos(q, limit = 30) {
+  const instances = [
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.adminforge.de',
+    'https://api.piped.private.coffee',
+  ]
+  for (const base of instances) {
+    try {
+      const res = await fetch(
+        base + '/search?filter=videos&q=' + encodeURIComponent(q)
+      )
+      if (!res.ok) continue
+      const d = await res.json()
+      const items = d.items || []
+      const out = items
+        .filter((i) => i.url && i.url.includes('watch?v='))
+        .slice(0, limit)
+        .map((i) => {
+          const id = i.url.split('watch?v=')[1].split('&')[0]
+          return {
+            id: 'vid-' + id,
+            kind: 'video',
+            title: i.title,
+            snippet:
+              (i.uploaderName || '') +
+              (i.duration ? ` · ${fmtDur(i.duration)}` : ''),
+            // Embeddable player URL (regular watch pages block iframing).
+            url: 'https://www.youtube-nocookie.com/embed/' + id,
+            thumb: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+          }
+        })
+      if (out.length) return out
+    } catch {
+      /* try next instance */
+    }
+  }
+  return []
+}
+
+/** Maps — Nominatim (OpenStreetMap geocoding, CORS). kind:'place'. */
+export async function searchPlaces(q, limit = 20) {
+  const url =
+    'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=' +
+    limit +
+    '&q=' +
+    encodeURIComponent(q)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Places failed: ${res.status}`)
+  const d = await res.json()
+  return (d || []).map((p) => {
+    const lat = +p.lat
+    const lon = +p.lon
+    const bb = 0.05
+    return {
+      id: 'place-' + p.place_id,
+      kind: 'place',
+      title: (p.display_name || '').split(',')[0],
+      snippet: p.display_name || '',
+      // OSM embed loads inside the in-app browser (allows iframing).
+      url: `https://www.openstreetmap.org/export/embed.html?bbox=${lon - bb}%2C${lat - bb}%2C${lon + bb}%2C${lat + bb}&layer=mapnik&marker=${lat}%2C${lon}`,
+      thumb: null,
+    }
+  })
+}
+
+/** Shopping — links into major marketplaces for the query (no free product API). */
+export function shoppingLinks(q) {
+  const eq = encodeURIComponent(q)
+  return [
+    { store: 'Amazon', url: `https://www.amazon.com/s?k=${eq}`, color: '#ff9900' },
+    { store: 'eBay', url: `https://www.ebay.com/sch/i.html?_nkw=${eq}`, color: '#e53238' },
+    { store: 'Etsy', url: `https://www.etsy.com/search?q=${eq}`, color: '#f56400' },
+    { store: 'Google Shopping', url: `https://www.google.com/search?tbm=shop&q=${eq}`, color: '#4285f4' },
+    { store: 'AliExpress', url: `https://www.aliexpress.com/wholesale?SearchText=${eq}`, color: '#ff4747' },
+  ].map((s, i) => ({
+    id: 'shop-' + i,
+    kind: 'link',
+    title: `${q} — ${s.store}`,
+    snippet: `Shop “${q}” on ${s.store}`,
+    url: s.url,
+    thumb: null,
+  }))
+}
+
+function fmtDur(sec) {
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
 /**
  * Fetch the full article content for the in-XROS reader — so results open
  * *inside* the browser instead of a new tab.
