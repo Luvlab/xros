@@ -108,10 +108,12 @@ function stripHtml(s) {
 }
 
 /** Images — Openverse (CC-licensed, CORS-enabled, no key). kind:'image'. */
-export async function searchImages(q, limit = 40) {
+export async function searchImages(q, limit = 20) {
+  // Anonymous Openverse caps page_size at 20.
+  const size = Math.min(limit, 20)
   const url =
     'https://api.openverse.org/v1/images/?page_size=' +
-    limit +
+    size +
     '&q=' +
     encodeURIComponent(q)
   const res = await fetch(url)
