@@ -414,15 +414,24 @@ const aEl = {
   signout: document.getElementById('acct-signout'),
 }
 
+const signinBtn = document.getElementById('signin-btn')
+function openAccountTab() {
+  sEl.panel.classList.remove('hidden')
+  sEl.tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === 'account'))
+  sEl.bodies.forEach((b) => b.classList.toggle('hidden', b.dataset.panel !== 'account'))
+}
+
 function wireAccount() {
+  signinBtn.addEventListener('click', openAccountTab)
   aEl.signin.addEventListener('click', async () => {
     const email = aEl.email.value.trim()
     if (!email) return
     try {
       await auth.signInWithEmail(email)
-      aEl.status.textContent = 'Check your email for the magic link.'
+      aEl.status.textContent =
+        'Magic link sent to ' + email + ' — check your inbox (and spam).'
     } catch (err) {
-      aEl.status.textContent = String(err.message || err)
+      aEl.status.textContent = 'Email sign-in failed: ' + String(err.message || err)
     }
   })
   aEl.google.addEventListener('click', () =>
@@ -444,6 +453,7 @@ function syncAccountUI() {
   }
   aEl.signedOut.classList.toggle('hidden', signedIn)
   aEl.signedIn.classList.toggle('hidden', !signedIn)
+  signinBtn.textContent = signedIn ? '● ' + roleLabel(auth.role) : 'Sign in'
   if (signedIn) {
     aEl.name.textContent = auth.profile.display_name || auth.profile.email
     aEl.roleBadge.textContent = roleLabel(auth.role)

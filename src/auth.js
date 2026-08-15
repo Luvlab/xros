@@ -71,12 +71,17 @@ export class Auth {
     this.profile = created || null
   }
 
+  /** The clean app URL to return to after auth (must be allow-listed in Supabase). */
+  get redirectUrl() {
+    return location.origin + location.pathname
+  }
+
   /** Magic-link email sign-in. */
   async signInWithEmail(email) {
     if (!this.enabled) throw new Error('Backend not configured')
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: location.href.split('#')[0] },
+      options: { emailRedirectTo: this.redirectUrl },
     })
     if (error) throw error
     return true
@@ -85,11 +90,12 @@ export class Auth {
   /** OAuth (e.g. 'google', 'github'). */
   async signInWithOAuth(provider) {
     if (!this.enabled) throw new Error('Backend not configured')
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: location.href.split('#')[0] },
+      options: { redirectTo: this.redirectUrl },
     })
     if (error) throw error
+    return data
   }
 
   async signOut() {
