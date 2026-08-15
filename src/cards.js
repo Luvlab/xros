@@ -69,218 +69,231 @@ export class ResultsLayer {
    * (this.view.vertical, ± deg above/below the horizon) drive everything from
    * a flat frontal window (90) to total surround (360).
    */
+  /**
+   * Masonry layout: every card is sized to its own content (no empty space),
+   * then stacked into columns spread across the coverage arc. Columns fill up
+   * and down from eye level, so results wrap above and below the horizon.
+   */
   _layout() {
     this.clear()
-    // Build the render list: results with the ad slotted a few cards in.
     const items = this._results.slice()
     if (this._ad) items.splice(Math.min(3, items.length), 0, { __ad: true, creative: this._ad })
     if (!items.length) return
 
     const coverage = this.view.coverage
-    const vertRad = THREE.MathUtils.degToRad(this.view.vertical)
     const fullRing = coverage >= 330
     const arc = fullRing ? Math.PI * 2 : THREE.MathUtils.degToRad(coverage)
+    const cardW = BASE_W * ((this.view.fontSize || 13) / 13)
 
-    // Card size scales with font size; smaller cards pack more results in.
-    const scale = (this.view.fontSize || 13) / 13
-    const cardW = BASE_W * scale
-    const cardH = BASE_H * scale
-    const gap = 1.04 // tight spacing
+    const azStep = (cardW * 1.12) / RADIUS
+    const cols = Math.max(
+      1,
+      fullRing ? Math.floor((2 * Math.PI) / azStep) : Math.floor(arc / azStep) + 1
+    )
+    const rowGapAng = (cardW * 0.06) / RADIUS
 
-    // Angular footprint of one card at the sphere radius.
-    const azStep = (cardW * gap) / RADIUS
-    const elStep = (cardH * gap) / RADIUS
-
-    // How many fit: columns across the arc, rows within the vertical spread.
-    const cols = Math.max(1, Math.floor(arc / azStep))
-    const rows = Math.max(1, Math.min(9, Math.floor((2 * vertRad) / elStep) + 1))
-    const capacity = cols * rows
-    const n = Math.min(items.length, capacity)
-    const rowsUsed = Math.max(1, Math.ceil(n / cols))
-
-    for (let i = 0; i < n; i++) {
-      const data = items[i]
-      const row = Math.floor(i / cols)
-      const col = i % cols
-      const colsInRow = Math.min(cols, n - row * cols)
-
-      const az = fullRing
-        ? col * ((2 * Math.PI) / colsInRow)
-        : (col - (colsInRow - 1) / 2) * azStep
-      const elev = rowsUsed > 1 ? ((rowsUsed - 1) / 2 - row) * elStep : 0
-
+    // Build every card (content-sized), then distribute round-robin into columns.
+    const built = items.map((data) => {
       const mesh = data.__ad
-        ? this._makeAdCard(data.creative, cardW, cardH)
-        : this._makeCard(data, cardW, cardH)
-      placeOnSphere(mesh, az, elev, RADIUS)
-      mesh.lookAt(0, 0, 0)
-
+        ? this._makeAdCard(data.creative, cardW)
+        : this._makeCard(data, cardW)
       if (data.__ad) mesh.userData.ad = data.creative
       else mesh.userData.result = data
-      mesh.userData.index = i
-      this.group.add(mesh)
-      this.cards.push({ mesh, data, basePos: mesh.position.clone(), baseScale: 1 })
-    }
-  }
-
-  _makeAdCard(creative, cardW = BASE_W, cardH = BASE_H) {
-    const W = 512
-    const H = 358
-    const canvas = document.createElement('canvas')
-    canvas.width = W
-    canvas.height = H
-    const ctx = canvas.getContext('2d')
-    const accent = cssVar('--accent2', '#b96bff')
-
-    roundRect(ctx, 6, 6, W - 12, H - 12, 22)
-    ctx.fillStyle = 'rgba(18,12,28,0.96)'
-    ctx.fill()
-    ctx.lineWidth = 3
-    ctx.strokeStyle = accent
-    ctx.stroke()
-
-    // "AD" chip
-    ctx.fillStyle = accent
-    roundRect(ctx, 24, 24, 64, 32, 8)
-    ctx.fill()
-    ctx.fillStyle = '#0a0a12'
-    ctx.font = '700 20px ui-monospace, Menlo, monospace'
-    ctx.fillText('AD', 40, 47)
-
-    ctx.fillStyle = '#f2ecff'
-    ctx.font = '700 26px ui-monospace, Menlo, monospace'
-    wrapText(ctx, creative.title || '', 24, 100, W - 48, 30, 2)
-
-    ctx.fillStyle = '#c7b9e6'
-    ctx.font = '400 19px ui-monospace, Menlo, monospace'
-    wrapText(ctx, creative.body || '', 24, 168, W - 48, 26, 5)
-
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.anisotropy = 4
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(cardW, cardH),
-      new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide })
-    )
-    return mesh
-  }
-
-  _makeCard(data, cardW = BASE_W, cardH = BASE_H) {
-    const tex = this._drawCardTexture(data)
-    const geo = new THREE.PlaneGeometry(cardW, cardH)
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex,
-      transparent: true,
-      side: THREE.DoubleSide,
+      return { mesh, data }
     })
-    const mesh = new THREE.Mesh(geo, mat)
+    const columns = Array.from({ length: cols }, () => [])
+    built.forEach((b, i) => columns[i % cols].push(b))
 
-    // Async thumbnail: redraw the texture once the image is in.
+    columns.forEach((col, c) => {
+      const az = fullRing
+        ? c * ((2 * Math.PI) / cols)
+        : (c - (cols - 1) / 2) * azStep
+      let total = -rowGapAng
+      col.forEach((b) => (total += b.mesh.userData.worldH / RADIUS + rowGapAng))
+      let cur = total / 2 // start at the top of the column
+      col.forEach((b) => {
+        const angH = b.mesh.userData.worldH / RADIUS
+        placeOnSphere(b.mesh, az, cur - angH / 2, RADIUS)
+        b.mesh.lookAt(0, 0, 0)
+        cur -= angH + rowGapAng
+        this.group.add(b.mesh)
+        this.cards.push({ mesh: b.mesh, data: b.data, basePos: b.mesh.position.clone(), baseScale: 1 })
+      })
+    })
+  }
+
+  _makeAdCard(creative, cardW = BASE_W) {
+    const layout = { W: 512, kind: 'ad', bandH: 0 }
+    _mctx.font = '700 26px ui-monospace, Menlo, monospace'
+    layout.titleLines = wrapLines(_mctx, creative.title || '', 512 - 44, 2)
+    _mctx.font = '400 19px ui-monospace, Menlo, monospace'
+    layout.snipLines = wrapLines(_mctx, creative.body || '', 512 - 44, 4)
+    layout.H = 20 + 40 + layout.titleLines.length * 30 + 8 + layout.snipLines.length * 24 + 18
+    return this._buildMesh({ ...creative, kind: 'ad' }, layout, cardW)
+  }
+
+  _makeCard(data, cardW = BASE_W) {
+    const layout = this._measure(data)
+    const mesh = this._buildMesh(data, layout, cardW)
+    // Async thumbnail — redraw in place (height is fixed, so no relayout).
     if (data.thumb) {
       this._texLoader.load(
         data.thumb,
         (img) => {
-          const newTex = this._drawCardTexture(data, img.image)
           mesh.material.map?.dispose()
-          mesh.material.map = newTex
+          mesh.material.map = this._drawCard(data, layout, img.image)
           mesh.material.needsUpdate = true
         },
         undefined,
-        () => {} // ignore image load failures, keep text-only card
+        () => {}
       )
     }
     return mesh
   }
 
-  /** Draw a card face to a canvas -> CanvasTexture. */
-  _drawCardTexture(data, image = null) {
+  _buildMesh(data, layout, cardW) {
+    const worldH = cardW * (layout.H / layout.W)
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(cardW, worldH),
+      new THREE.MeshBasicMaterial({
+        map: this._drawCard(data, layout),
+        transparent: true,
+        side: THREE.DoubleSide,
+      })
+    )
+    mesh.userData.worldH = worldH
+    return mesh
+  }
+
+  /** Measure content -> {W,H,kind,bandH,titleLines,snipLines}. No empty space. */
+  _measure(data) {
     const W = 512
-    const H = 358
+    const pad = 20
+    if (data.kind === 'image') {
+      _mctx.font = '700 24px ui-monospace, Menlo, monospace'
+      return { W, H: 384, kind: 'image', titleLines: wrapLines(_mctx, data.title, W - 48, 2), bandH: 0 }
+    }
+    const bandH = data.thumb && data.kind !== 'place' ? 236 : 0
+    _mctx.font = '700 25px ui-monospace, Menlo, monospace'
+    const titleLines = wrapLines(_mctx, data.title, W - 2 * pad, 3)
+    _mctx.font = '400 19px ui-monospace, Menlo, monospace'
+    const snipLines = data.snippet ? wrapLines(_mctx, data.snippet, W - 2 * pad, bandH ? 2 : 4) : []
+    const top = bandH ? 14 + bandH + 10 : pad
+    const H = top + titleLines.length * 30 + (snipLines.length ? 6 + snipLines.length * 24 : 0) + pad
+    return { W, H: Math.max(Math.round(H), 84), kind: data.kind, bandH, titleLines, snipLines }
+  }
+
+  /** Draw a content-sized card face -> CanvasTexture. */
+  _drawCard(data, layout, image = null) {
+    const { W, H, kind, bandH } = layout
     const canvas = document.createElement('canvas')
     canvas.width = W
     canvas.height = H
     const ctx = canvas.getContext('2d')
+    const accent = cssVar('--accent', '#6af7ff')
+    const accent2 = cssVar('--accent2', '#b96bff')
 
-    // Panel background
-    roundRect(ctx, 6, 6, W - 12, H - 12, 22)
+    // Panel
+    roundRect(ctx, 4, 4, W - 8, H - 8, 18)
     const grad = ctx.createLinearGradient(0, 0, 0, H)
-    grad.addColorStop(0, 'rgba(18,22,40,0.96)')
-    grad.addColorStop(1, 'rgba(10,12,24,0.96)')
+    if (kind === 'ad') {
+      grad.addColorStop(0, 'rgba(18,12,28,0.97)')
+      grad.addColorStop(1, 'rgba(12,10,22,0.97)')
+    } else {
+      grad.addColorStop(0, 'rgba(18,22,40,0.96)')
+      grad.addColorStop(1, 'rgba(10,12,24,0.96)')
+    }
     ctx.fillStyle = grad
     ctx.fill()
-    ctx.lineWidth = 2
-    ctx.strokeStyle = 'rgba(122,134,184,0.35)'
+    ctx.lineWidth = kind === 'ad' ? 3 : 2
+    ctx.strokeStyle = kind === 'ad' ? accent2 : 'rgba(122,134,184,0.35)'
     ctx.stroke()
 
-    // Image results: full-bleed image with the title over a gradient scrim.
-    if (image && data.kind === 'image') {
-      ctx.save()
-      roundRect(ctx, 8, 8, W - 16, H - 16, 20)
-      ctx.clip()
-      const c = cover(image.width, image.height, W - 16, H - 16)
-      ctx.drawImage(image, c.sx, c.sy, c.sw, c.sh, 8, 8, W - 16, H - 16)
-      const g = ctx.createLinearGradient(0, H - 150, 0, H)
-      g.addColorStop(0, 'rgba(6,6,10,0)')
-      g.addColorStop(1, 'rgba(6,6,10,0.92)')
-      ctx.fillStyle = g
-      ctx.fillRect(8, H - 150, W - 16, 142)
-      ctx.restore()
+    // Full-bleed image cards
+    if (kind === 'image') {
+      if (image) {
+        ctx.save()
+        roundRect(ctx, 6, 6, W - 12, H - 12, 14)
+        ctx.clip()
+        const c = cover(image.width, image.height, W - 12, H - 12)
+        ctx.drawImage(image, c.sx, c.sy, c.sw, c.sh, 6, 6, W - 12, H - 12)
+        const g = ctx.createLinearGradient(0, H - 130, 0, H)
+        g.addColorStop(0, 'rgba(6,6,10,0)')
+        g.addColorStop(1, 'rgba(6,6,10,0.9)')
+        ctx.fillStyle = g
+        ctx.fillRect(6, H - 130, W - 12, 124)
+        ctx.restore()
+      }
       ctx.fillStyle = '#e8ecff'
-      ctx.font = '700 24px ui-monospace, Menlo, monospace'
-      wrapText(ctx, data.title, 24, H - 66, W - 48, 28, 2)
-      const tex0 = new THREE.CanvasTexture(canvas)
-      tex0.colorSpace = THREE.SRGBColorSpace
-      tex0.anisotropy = 4
-      return tex0
+      ctx.font = '700 23px ui-monospace, Menlo, monospace'
+      drawLines(ctx, layout.titleLines, 22, image ? H - 58 : 44, 27)
+      return finishTex(canvas)
     }
 
-    let textTop = 30
-    // Optional image band (wiki thumbnails, video stills)
-    if (image) {
+    let y = 20
+
+    // Thumbnail band (wiki, video)
+    if (bandH) {
       ctx.save()
-      roundRect(ctx, 18, 18, W - 36, 150, 14)
+      roundRect(ctx, 14, 14, W - 28, bandH, 12)
       ctx.clip()
-      const { sx, sy, sw, sh } = cover(image.width, image.height, W - 36, 150)
-      ctx.drawImage(image, sx, sy, sw, sh, 18, 18, W - 36, 150)
+      if (image) {
+        const c = cover(image.width, image.height, W - 28, bandH)
+        ctx.drawImage(image, c.sx, c.sy, c.sw, c.sh, 14, 14, W - 28, bandH)
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.04)'
+        ctx.fillRect(14, 14, W - 28, bandH)
+      }
       ctx.restore()
-      // Play badge for videos
       if (data.kind === 'video') {
+        const cy = 14 + bandH / 2
         ctx.fillStyle = 'rgba(6,6,10,0.6)'
         ctx.beginPath()
-        ctx.arc(W / 2, 93, 30, 0, Math.PI * 2)
+        ctx.arc(W / 2, cy, 28, 0, Math.PI * 2)
         ctx.fill()
-        ctx.fillStyle = '#ffffff'
+        ctx.fillStyle = '#fff'
         ctx.beginPath()
-        ctx.moveTo(W / 2 - 10, 78)
-        ctx.lineTo(W / 2 - 10, 108)
-        ctx.lineTo(W / 2 + 16, 93)
+        ctx.moveTo(W / 2 - 9, cy - 14)
+        ctx.lineTo(W / 2 - 9, cy + 14)
+        ctx.lineTo(W / 2 + 15, cy)
         ctx.closePath()
         ctx.fill()
       }
-      textTop = 190
-    } else if (data.kind === 'place') {
-      // Map pin marker for places
-      ctx.fillStyle = cssVar('--accent', '#6af7ff')
-      ctx.font = '700 30px ui-monospace, Menlo, monospace'
-      ctx.fillText('📍', 26, 54)
-      textTop = 76
+      y = 14 + bandH + 10
+    }
+
+    // AD chip
+    if (kind === 'ad') {
+      ctx.fillStyle = accent2
+      roundRect(ctx, 20, 18, 60, 30, 8)
+      ctx.fill()
+      ctx.fillStyle = '#0a0a12'
+      ctx.font = '700 19px ui-monospace, Menlo, monospace'
+      ctx.fillText('AD', 34, 39)
+      y = 62
+    }
+
+    // Place pin
+    if (kind === 'place') {
+      ctx.font = '700 26px ui-monospace, Menlo, monospace'
+      ctx.fillText('📍', 20, y + 22)
     }
 
     // Title
-    ctx.fillStyle = '#e8ecff'
-    ctx.font = '700 26px ui-monospace, Menlo, monospace'
-    wrapText(ctx, data.title, 26, textTop, W - 52, 30, 2)
+    ctx.fillStyle = kind === 'ad' ? '#f2ecff' : '#e8ecff'
+    ctx.font = '700 25px ui-monospace, Menlo, monospace'
+    y += 24
+    drawLines(ctx, layout.titleLines, 20, y, 30)
+    y += (layout.titleLines.length - 1) * 30
 
     // Snippet
-    ctx.fillStyle = '#9aa4d4'
-    ctx.font = '400 18px ui-monospace, Menlo, monospace'
-    const snipY = textTop + (image ? 68 : 76)
-    wrapText(ctx, data.snippet || '—', 26, snipY, W - 52, 24, image ? 3 : 5)
-
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.anisotropy = 4
-    return tex
+    if (layout.snipLines && layout.snipLines.length) {
+      ctx.fillStyle = kind === 'ad' ? '#c7b9e6' : '#9aa4d4'
+      ctx.font = '400 19px ui-monospace, Menlo, monospace'
+      y += 28
+      drawLines(ctx, layout.snipLines, 20, y, 24)
+    }
+    return finishTex(canvas)
   }
 
   intersectables() {
@@ -583,6 +596,42 @@ function placeOnSphere(mesh, az, elev, R) {
 }
 
 /* ---------- canvas helpers ---------- */
+// Shared scratch context for measuring text (content-fit card sizing).
+const _mctx = document.createElement('canvas').getContext('2d')
+
+// Wrap text into an array of lines that fit maxW, capped at maxLines (last
+// line ellipsized if truncated).
+function wrapLines(ctx, text, maxW, maxLines) {
+  const words = String(text || '').split(/\s+/).filter(Boolean)
+  const all = []
+  let line = ''
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w
+    if (ctx.measureText(test).width > maxW && line) {
+      all.push(line)
+      line = w
+    } else line = test
+  }
+  if (line) all.push(line)
+  if (all.length <= maxLines) return all
+  const kept = all.slice(0, maxLines)
+  let last = kept[maxLines - 1]
+  while (ctx.measureText(last + '…').width > maxW && last.length > 1) last = last.slice(0, -1)
+  kept[maxLines - 1] = last + '…'
+  return kept
+}
+
+function drawLines(ctx, lines, x, y, lh) {
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x, y + i * lh)
+}
+
+function finishTex(canvas) {
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 4
+  return tex
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath()
   ctx.moveTo(x + r, y)
