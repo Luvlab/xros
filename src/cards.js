@@ -4,8 +4,8 @@ import * as THREE from 'three'
  * Builds and manages the floating result cards arranged on a sphere around
  * the user, plus the expanded detail panel.
  */
-const BASE_W = 1.15 // card width at font size 15 (scales with fontSize)
-const BASE_H = 0.8
+const BASE_W = 1.05 // card width at font size 13 (scales with fontSize)
+const BASE_H = 0.64 // shorter cards — more economical, more results in view
 const RADIUS = 4.2
 
 export class ResultsLayer {
@@ -28,7 +28,7 @@ export class ResultsLayer {
     this._ad = null // in-feed ad creative, slotted among the results
     // View config: horizontal wrap (deg), vertical spread (± deg), and
     // fontSize which sets card size → how densely results pack.
-    this.view = { coverage: 120, vertical: 22, fontSize: 15 }
+    this.view = { coverage: 120, vertical: 22, fontSize: 13 }
   }
 
   /** Set the in-feed ad creative (rendered as a card between results). */
@@ -82,7 +82,7 @@ export class ResultsLayer {
     const arc = fullRing ? Math.PI * 2 : THREE.MathUtils.degToRad(coverage)
 
     // Card size scales with font size; smaller cards pack more results in.
-    const scale = (this.view.fontSize || 15) / 15
+    const scale = (this.view.fontSize || 13) / 13
     const cardW = BASE_W * scale
     const cardH = BASE_H * scale
     const gap = 1.04 // tight spacing
@@ -93,7 +93,7 @@ export class ResultsLayer {
 
     // How many fit: columns across the arc, rows within the vertical spread.
     const cols = Math.max(1, Math.floor(arc / azStep))
-    const rows = Math.max(1, Math.min(7, Math.floor((2 * vertRad) / elStep) + 1))
+    const rows = Math.max(1, Math.min(9, Math.floor((2 * vertRad) / elStep) + 1))
     const capacity = cols * rows
     const n = Math.min(items.length, capacity)
     const rowsUsed = Math.max(1, Math.ceil(n / cols))

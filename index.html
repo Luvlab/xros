@@ -22,15 +22,16 @@
 
     <!-- 2D overlay: search + mode controls. Hidden while in stereo (cardboard) mode. -->
     <div id="ui">
+      <div id="topwrap">
       <header id="topbar">
         <div class="brand">
-          <span class="logo">◎</span> XR<span class="brand-dim">SEARCH</span>
+          <span class="logo">◎</span> XR<span class="brand-dim">OS</span>
         </div>
         <form id="search-form" autocomplete="off">
           <input
             id="search-input"
             type="search"
-            placeholder="Search the space…"
+            placeholder="Search…"
             aria-label="Search"
           />
           <button id="search-btn" type="submit" aria-label="Search">➜</button>
@@ -54,6 +55,7 @@
         <button class="filter-btn" data-filter="shopping">Shopping</button>
         <button class="filter-btn" data-filter="news">News</button>
       </div>
+      </div><!-- /#topwrap -->
 
       <!-- Settings panel -->
       <aside id="settings" class="hidden" aria-label="Settings">
@@ -103,7 +105,7 @@
           <label class="field-label" for="vertical-range">
             Above / below horizon — <span id="vertical-val">±22°</span>
           </label>
-          <input id="vertical-range" class="range" type="range" min="0" max="60" step="2" />
+          <input id="vertical-range" class="range" type="range" min="0" max="85" step="1" />
           <label class="field-label" for="font-range">
             Result size — <span id="font-val">15</span> (smaller = more results)
           </label>
@@ -157,7 +159,11 @@
         <svg viewBox="0 0 100 100">
           <circle class="reticle-bg" cx="50" cy="50" r="40" />
           <circle class="reticle-fill" cx="50" cy="50" r="40" />
-          <circle class="reticle-dot" cx="50" cy="50" r="4" />
+          <line class="reticle-cross" x1="50" y1="28" x2="50" y2="42" />
+          <line class="reticle-cross" x1="50" y1="58" x2="50" y2="72" />
+          <line class="reticle-cross" x1="28" y1="50" x2="42" y2="50" />
+          <line class="reticle-cross" x1="58" y1="50" x2="72" y2="50" />
+          <circle class="reticle-dot" cx="50" cy="50" r="2.5" />
         </svg>
       </div>
 

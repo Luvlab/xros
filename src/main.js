@@ -43,9 +43,18 @@ settings.onThemeChange((t) => {
 })
 settings.applyTheme()
 
-// Apply the saved background choice.
+background.onCameraError(() => {
+  setStatus('Camera unavailable — allow camera access or pick another background.')
+  setTimeout(() => setStatus(''), 3500)
+  syncBgUI()
+})
+
+// Apply the saved background choice. Camera is NOT auto-started on load (it needs
+// a user gesture / permission) — fall back to stars; the user re-taps Camera.
 if (settings.data.background.preset === 'image' && settings.data.background.imageUrl) {
   background.setImage(settings.data.background.imageUrl)
+} else if (settings.data.background.preset === 'camera') {
+  background.setPreset('stars')
 } else {
   background.setPreset(settings.data.background.preset || 'stars')
 }
@@ -71,7 +80,7 @@ const raycaster = new THREE.Raycaster()
 const centerNdc = new THREE.Vector2(0, 0)
 let hovered = null
 let dwell = 0
-const DWELL_TIME = 1.4 // seconds of gaze to trigger
+const DWELL_TIME = 1.8 // seconds of gaze to trigger (tilt + cardboard)
 
 // ---- search flow ----
 let searchToken = 0
@@ -93,14 +102,14 @@ async function doSearch() {
   try {
     let items = []
     if (currentFilter === 'news' || (currentFilter === 'all' && !q)) {
-      items = await xrNews(40)
+      items = await xrNews(50)
     } else if (currentFilter === 'all') {
-      items = await search(q, 40)
+      items = await search(q, 50)
     } else {
       const qq = q || 'virtual reality' // sensible default on empty query
-      if (currentFilter === 'images') items = await searchImages(qq, 40)
-      else if (currentFilter === 'videos') items = await searchVideos(qq, 30)
-      else if (currentFilter === 'maps') items = await searchPlaces(qq, 20)
+      if (currentFilter === 'images') items = await searchImages(qq, 20)
+      else if (currentFilter === 'videos') items = await searchVideos(qq, 40)
+      else if (currentFilter === 'maps') items = await searchPlaces(qq, 25)
       else if (currentFilter === 'shopping') items = shoppingLinks(qq)
     }
     if (token !== searchToken) return
@@ -207,6 +216,11 @@ async function enterMode(next) {
     ui.reticle.classList.remove('hidden')
     ui.exitVr.classList.remove('hidden')
     requestFullscreen()
+  } else if (next === 'tilt') {
+    // Tilt uses the same hands-free crosshair + dwell-to-select as cardboard.
+    document.body.classList.remove('stereo')
+    ui.reticle.classList.remove('hidden')
+    ui.exitVr.classList.add('hidden')
   } else {
     document.body.classList.remove('stereo')
     ui.reticle.classList.add('hidden')
@@ -679,7 +693,7 @@ async function openReader(data) {
 
 // ---- gaze loop (tilt + cardboard) ----
 function updateGaze(dt) {
-  const active = mode === 'cardboard'
+  const active = mode === 'cardboard' || mode === 'tilt'
   if (!active) {
     if (hovered) {
       hovered = null
@@ -789,6 +803,15 @@ installBtn.addEventListener('click', async () => {
 window.addEventListener('appinstalled', () => installBtn.classList.add('hidden'))
 
 if ('serviceWorker' in navigator) {
+  // If a new service worker takes over (a fresh deploy), reload once so the
+  // latest app + assets show immediately instead of a stale cached version.
+  const hadController = !!navigator.serviceWorker.controller
+  let reloading = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return
+    reloading = true
+    location.reload()
+  })
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {})
   })

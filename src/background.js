@@ -11,6 +11,7 @@ import * as THREE from 'three'
  */
 export const BG_PRESETS = [
   { id: 'stars', label: 'Stars' },
+  { id: 'camera', label: 'Camera (AR) ◉' },
   { id: 'tunnel', label: 'Tunnel ◎' },
   { id: 'moire', label: 'Moiré ◫' },
   { id: 'spiral', label: 'Spiral ✺' },
@@ -110,10 +111,63 @@ export class Background {
   setPreset(id) {
     this.preset = id
     this._clearImage()
+    if (id === 'camera') {
+      this._startCamera()
+      return
+    }
+    this._stopCamera()
     this._apply()
   }
 
+  /** Live camera passthrough as the background (AR). Needs https + a gesture. */
+  async _startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      })
+      const video = document.createElement('video')
+      video.playsInline = true
+      video.muted = true
+      video.srcObject = stream
+      await video.play()
+      this._camStream = stream
+      this._camVideo = video
+      this.cameraTex = new THREE.VideoTexture(video)
+      this.cameraTex.colorSpace = THREE.SRGBColorSpace
+      this._apply()
+    } catch (err) {
+      // Permission denied / no camera — fall back to stars.
+      this.preset = 'stars'
+      this._stopCamera()
+      this._apply()
+      this._onCameraError?.(err)
+    }
+  }
+
+  _stopCamera() {
+    if (this._camStream) {
+      this._camStream.getTracks().forEach((t) => t.stop())
+      this._camStream = null
+    }
+    if (this.cameraTex) {
+      this.cameraTex.dispose()
+      this.cameraTex = null
+    }
+    this._camVideo = null
+  }
+
+  onCameraError(cb) {
+    this._onCameraError = cb
+  }
+
   _apply() {
+    if (this.cameraTex) {
+      this.scene.background = this.cameraTex
+      this.sphere.visible = false
+      if (this.stars) this.stars.visible = false
+      return
+    }
     if (this.imageTex) {
       this.scene.background = this.imageTex
       this.sphere.visible = false
@@ -143,6 +197,7 @@ export class Background {
         tex.mapping = THREE.EquirectangularReflectionMapping
         tex.colorSpace = THREE.SRGBColorSpace
         this._clearImage()
+        this._stopCamera()
         this.imageTex = tex
         this._objectUrl = revoke ? url : null
         this._apply()
@@ -174,5 +229,8 @@ export class Background {
   update(dt) {
     this._t += dt
     this.uniforms.uTime.value = this._t
+    if (this.cameraTex && this._camVideo && this._camVideo.readyState >= 2) {
+      this.cameraTex.needsUpdate = true
+    }
   }
 }

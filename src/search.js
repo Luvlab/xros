@@ -162,7 +162,9 @@ export async function searchVideos(q, limit = 30) {
               (i.duration ? ` · ${fmtDur(i.duration)}` : ''),
             // Embeddable player URL (regular watch pages block iframing).
             url: 'https://www.youtube-nocookie.com/embed/' + id,
-            thumb: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+            // YouTube thumbs lack CORS headers (blocks WebGL textures), so
+            // proxy through wsrv.nl which adds them.
+            thumb: `https://wsrv.nl/?url=i.ytimg.com/vi/${id}/mqdefault.jpg&w=480`,
           }
         })
       if (out.length) return out
