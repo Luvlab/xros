@@ -25,6 +25,7 @@ import { AdLayer } from './ads.js'
 import { Shell } from './shell.js'
 import { can, roleLabel } from './rbac.js'
 import { Background, BG_PRESETS } from './background.js'
+import { Voice } from './voice.js'
 
 const container = document.getElementById('scene')
 const { scene, camera, renderer } = createWorld(container)
@@ -216,6 +217,7 @@ async function enterMode(next) {
     ui.reticle.classList.remove('hidden')
     ui.exitVr.classList.remove('hidden')
     requestFullscreen()
+    playIntro() // spoken + on-screen intro, then start listening
   } else if (next === 'tilt') {
     // Tilt uses the same hands-free crosshair + dwell-to-select as cardboard.
     document.body.classList.remove('stereo')
@@ -841,6 +843,84 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {})
   })
+}
+
+// ---- voice: search + commands (hands-free) ----
+const voice = new Voice()
+const micBtn = document.getElementById('mic-btn')
+const introEl = document.getElementById('vr-intro')
+if (!voice.supported) micBtn.style.opacity = '0.4'
+voice.onStateChange = (on) => micBtn.classList.toggle('listening', on)
+voice.onResult = handleVoice
+micBtn.addEventListener('click', () => {
+  if (!voice.supported) return showToast('Voice input needs Chrome or Android.')
+  voice.toggle()
+})
+
+function setFilter(f) {
+  currentFilter = f
+  filterBtns.forEach((x) => x.classList.toggle('active', x.dataset.filter === f))
+}
+
+function showToast(html, ms = 6000) {
+  introEl.innerHTML = html
+  introEl.classList.remove('hidden')
+  clearTimeout(showToast._t)
+  showToast._t = setTimeout(() => introEl.classList.add('hidden'), ms)
+}
+
+// Interpret a spoken phrase as a command, else a search query.
+function handleVoice(text) {
+  const t = text.toLowerCase().trim()
+  const fmap = {
+    images: 'images', image: 'images', pictures: 'images',
+    videos: 'videos', video: 'videos',
+    maps: 'maps', map: 'maps',
+    shopping: 'shopping', shop: 'shopping',
+    news: 'news', all: 'all', everything: 'all',
+  }
+  const asFilter = t.replace(/^(show|go to|open|switch to)\s+/, '').replace(/\s+(filter|tab)$/, '')
+  if (fmap[asFilter]) {
+    setFilter(fmap[asFilter])
+    doSearch()
+    return
+  }
+  if (t === 'home' || t === 'go home' || t === 'reset') {
+    ui.input.value = ''
+    setFilter('all')
+    doSearch()
+    return
+  }
+  if (t === 'close' || t === 'close window' || t === 'back') {
+    closeBrowser()
+    results.hideReader()
+    return
+  }
+  if (t === 'refresh' || t === 'reload') return doSearch()
+  if (t.includes('zoom in')) {
+    targetZoom = Math.min(targetZoom + 0.8, ZOOM_MAX)
+    return
+  }
+  if (t.includes('zoom out') || t.includes('zoom back')) {
+    targetZoom = Math.max(targetZoom - 0.8, 0)
+    return
+  }
+  // "search for X" / "find X" — otherwise treat the whole phrase as the query.
+  const m = t.match(/^(?:search for|search|find|look up|look for)\s+(.+)/)
+  ui.input.value = m ? m[1] : text
+  doSearch()
+}
+
+// Spoken + visual intro when entering VR.
+function playIntro() {
+  voice.speak(
+    'Welcome to XROS. Look around to explore the results. Use your voice — say search and your words, or a filter like images or news.'
+  )
+  showToast(
+    '<b>XROS voice</b> — say “<b>search &lt;words&gt;</b>”, a filter like <b>images</b> / <b>news</b>, or “<b>zoom in</b>”, “<b>close</b>”, “<b>home</b>”. Tap 🎤 anytime.',
+    9000
+  )
+  if (voice.supported) setTimeout(() => voice.start(), 800)
 }
 
 // ---- render loop ----

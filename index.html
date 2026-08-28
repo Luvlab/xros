@@ -38,6 +38,7 @@
         </form>
         <div id="modes">
           <button id="refresh-btn" class="mode-btn" title="Refresh results">⟳</button>
+          <button id="mic-btn" class="mode-btn" title="Voice search &amp; commands">🎤</button>
           <button id="fov-btn" class="mode-btn" title="Field of view — tap to cycle 90 / 120 / 180 / 360">◐ 120°</button>
           <button data-mode="tilt" class="mode-btn" title="Tilt / magic window">TILT</button>
           <button data-mode="cardboard" class="mode-btn" title="VR cardboard">VR</button>
@@ -200,6 +201,9 @@
           </div>
         </div>
       </div>
+
+      <!-- Voice / VR intro toast -->
+      <div id="vr-intro" class="hidden"></div>
 
       <div id="hint" class="hint">
         Drag to look · type a query · tap <b>TILT</b> on your phone · drop in a
