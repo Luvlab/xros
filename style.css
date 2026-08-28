@@ -523,6 +523,70 @@ body.stereo #filters {
   padding: 24px;
 }
 
+/* Branded loading screen shown over the iframe until the page loads */
+#browser-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(120% 90% at 50% 40%, rgba(105, 120, 255, 0.14), transparent 70%),
+    var(--bg);
+  z-index: 2;
+}
+#browser-loading.hidden {
+  display: none;
+}
+.xros-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+}
+.loader-logo {
+  font-family: var(--font);
+  font-weight: 700;
+  letter-spacing: 3px;
+  font-size: 26px;
+  color: var(--fg);
+}
+.loader-logo span {
+  color: var(--accent);
+}
+.loader-ring {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 3px solid rgba(122, 134, 184, 0.22);
+  border-top-color: var(--accent);
+  border-right-color: var(--accent2);
+  animation: xros-spin 0.9s linear infinite;
+}
+@keyframes xros-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.loader-url {
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--dim);
+  max-width: 80%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.loader-tag {
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--dim);
+  opacity: 0.7;
+}
+
 .acct-card {
   display: flex;
   align-items: center;

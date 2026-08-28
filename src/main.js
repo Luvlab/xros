@@ -534,27 +534,43 @@ const bEl = {
   title: document.getElementById('browser-title'),
   frame: document.getElementById('browser-frame'),
   blocked: document.getElementById('browser-blocked'),
+  loading: document.getElementById('browser-loading'),
+  loadingUrl: document.getElementById('browser-loading-url'),
   newtab: document.getElementById('browser-newtab'),
   close: document.getElementById('browser-close'),
   blockedOpen: document.getElementById('browser-blocked-open'),
 }
 let browserUrl = ''
+let browserToken = 0
 function openInApp(url, title) {
   if (!url) return
+  const token = ++browserToken
   browserUrl = url
   bEl.title.textContent = title || url
+  bEl.loadingUrl.textContent = (() => {
+    try {
+      return new URL(url).hostname.replace('www.', '')
+    } catch {
+      return url
+    }
+  })()
   bEl.blocked.classList.add('hidden')
+  bEl.loading.classList.remove('hidden') // branded loading screen
   bEl.panel.classList.remove('hidden')
   let loaded = false
   bEl.frame.onload = () => {
     loaded = true
+    if (token !== browserToken) return
+    bEl.loading.classList.add('hidden')
     bEl.blocked.classList.add('hidden')
   }
   bEl.frame.src = url
   // If nothing loads in time the site likely refuses embedding — offer a tab.
   setTimeout(() => {
-    if (!loaded) bEl.blocked.classList.remove('hidden')
-  }, 3500)
+    if (token !== browserToken || loaded) return
+    bEl.loading.classList.add('hidden')
+    bEl.blocked.classList.remove('hidden')
+  }, 4000)
 }
 function closeBrowser() {
   bEl.panel.classList.add('hidden')
